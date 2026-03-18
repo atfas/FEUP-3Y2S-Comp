@@ -92,12 +92,17 @@ public class JmmSymbolTableBuilder {
 
         for (var importDecl : root.getChildren(IMPORT_DECL)) {
 
-            var importPathList = importDecl.getObjectAsList("path", String.class);
+            var importPathList = importDecl.getObjectAsList("name", String.class);
             var path = String.join(".", importPathList);
 
             imports.add(path);
         }
     }
+
+    private static String buildTypes(JmmNode root) {
+        
+    }
+
 
     private List<MethodSymbol> buildMethods(JmmNode classDecl) {
 

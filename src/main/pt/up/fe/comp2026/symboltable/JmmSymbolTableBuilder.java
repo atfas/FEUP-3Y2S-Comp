@@ -52,15 +52,13 @@ public class JmmSymbolTableBuilder {
     }
 
     public static SymbolTableBuilderResult build(JmmNode root) {
-        return new JmmSymbolTableBuilder(root).buildInternal();
+        return new JmmSymbolTableBuilder(root).buildInternal(root);
     }
 
-    private SymbolTableBuilderResult buildInternal() {
+    private SymbolTableBuilderResult buildInternal(JmmNode root) {
 
-
-        var packageDecl = root.getChildren(PACKAGE_DECL).getFirst();
-        var packagePathList = packageDecl.getObjectAsList("path", String.class);
-        var packagePath = String.join(".", packagePathList);
+        var packagePath = buildPackage(root);
+        buildImports(root);
 
         var classDecl = root.getObject("classNode", JmmNode.class);
         SpecsCheck.checkArgument(CLASS_DECL.check(classDecl), () -> "Expected a class declaration: " + classDecl);
@@ -80,6 +78,25 @@ public class JmmSymbolTableBuilder {
         var symbolTable = new JmmSymbolTable(imports, fullyQualifiedName, null, Collections.emptyList(), methods, importer);
 
         return new SymbolTableBuilderResult(symbolTable, reports);
+    }
+
+    private static String buildPackage(JmmNode root) {
+
+        var packageDecl = root.getChildren(PACKAGE_DECL).getFirst();
+        var packagePathList = packageDecl.getObjectAsList("path", String.class);
+
+        return String.join(".", packagePathList);
+    }
+
+    private void buildImports(JmmNode root) {
+
+        for (var importDecl : root.getChildren(IMPORT_DECL)) {
+
+            var importPathList = importDecl.getObjectAsList("path", String.class);
+            var path = String.join(".", importPathList);
+
+            imports.add(path);
+        }
     }
 
     private List<MethodSymbol> buildMethods(JmmNode classDecl) {

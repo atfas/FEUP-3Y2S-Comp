@@ -72,10 +72,20 @@ public class JmmSymbolTableBuilder {
         }
         declaredClasses.put(className, fullyQualifiedName);
 
+        String superQualifiedName = classDecl.getOptional("parent").orElse(null);
+
+        if (classDecl.hasAttribute("parent")) {
+            var parentName = classDecl.get("parent");
+
+            superQualifiedName = imports.stream()
+                    .filter(i -> i.equals(parentName) || i.endsWith("." + parentName))
+                    .findFirst()
+                    .orElse(parentName);
+        }
 
         var methods = buildMethods(classDecl);
 
-        var symbolTable = new JmmSymbolTable(imports, fullyQualifiedName, null, Collections.emptyList(), methods, importer);
+        var symbolTable = new JmmSymbolTable(imports, fullyQualifiedName, superQualifiedName, Collections.emptyList(), methods, importer);
 
         return new SymbolTableBuilderResult(symbolTable, reports);
     }

@@ -127,7 +127,8 @@ public class JmmSymbolTableBuilder {
         var methodName = method.get("name");
 
         System.out.println("[TODO] JmmSymbolTableBuilder.buildMethod(): Assuming return type of method is always int, and always has a single int parameter, needs to be expanded");
-        var returnType = TypeUtils.intType();
+
+        var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class));
 
 
         var params = List.of(new Symbol(TypeUtils.intType(), method.getChildren(PARAM).getFirst().get(JmmAttributes.PARAM.NAME)));

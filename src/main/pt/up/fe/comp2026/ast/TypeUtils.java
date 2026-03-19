@@ -1,5 +1,6 @@
 package pt.up.fe.comp2026.ast;
 
+import org.specs.comp.ollir.type.ClassType;
 import pt.up.fe.comp.jmm.analysis.table.MethodSymbol;
 import pt.up.fe.comp.jmm.analysis.table.Signature;
 import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
@@ -41,11 +42,22 @@ public class TypeUtils {
     }
 
     public static JmmType convertType(JmmNode typeNode) {
-        assert (TYPE.check(typeNode));
-
-        System.out.println("[TODO] TypeUtils.convertType(): Implement for classes and arrays");
         var name = typeNode.get("name");
-        return JmmPrimitiveType.fromString(name).orElseThrow();
+        var primitiveType = JmmPrimitiveType.fromString(name);
+
+        JmmType type;
+
+        if (primitiveType.isPresent()) {
+            type = primitiveType.get();
+        }else {
+            type = JmmClassType.ofInstance(name, false);
+        }
+
+        if (ARRAY_TYPE.check(typeNode)) {
+            return JmmArrayType.of(type);
+        }
+
+        return type;
     }
 
 

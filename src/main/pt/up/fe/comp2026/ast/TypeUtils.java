@@ -40,7 +40,7 @@ public class TypeUtils {
         return JmmPrimitiveType.INT;
     }
 
-    public JmmType convertType(JmmNode typeNode) {
+    public static JmmType convertType(JmmNode typeNode) {
         assert (TYPE.check(typeNode));
 
         System.out.println("[TODO] TypeUtils.convertType(): Implement for classes and arrays");

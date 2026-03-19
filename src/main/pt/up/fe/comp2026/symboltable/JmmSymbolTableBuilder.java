@@ -17,7 +17,6 @@ import pt.up.fe.comp2026.ast.TypeUtils;
 import pt.up.fe.comp2026.jmm.ast.JmmAttributes;
 import pt.up.fe.specs.util.SpecsCheck;
 
-import java.lang.reflect.Type;
 import java.util.*;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -100,8 +99,19 @@ public class JmmSymbolTableBuilder {
         }
     }
 
-    private JmmType buildTypes(JmmNode root) {
-        return null;
+    private Map<String, JmmType> buildTypes(JmmNode classDecl) {
+        Map<String, JmmType> map = new HashMap<>();
+
+        for (var methodDecl : classDecl.getChildren(METHOD_DECL)) {
+            var name = methodDecl.get("name");
+
+            var returnTypeNode = methodDecl.getObject("returnType", JmmNode.class);
+            var returnType = TypeUtils.convertType(returnTypeNode);
+
+            map.put(name, returnType);
+        }
+
+        return map;
     }
 
 

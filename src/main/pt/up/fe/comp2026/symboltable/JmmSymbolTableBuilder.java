@@ -17,6 +17,7 @@ import pt.up.fe.comp2026.ast.TypeUtils;
 import pt.up.fe.comp2026.jmm.ast.JmmAttributes;
 import pt.up.fe.specs.util.SpecsCheck;
 
+import java.lang.reflect.Type;
 import java.util.*;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -99,8 +100,8 @@ public class JmmSymbolTableBuilder {
         }
     }
 
-    private static String buildTypes(JmmNode root) {
-        
+    private JmmType buildTypes(JmmNode root) {
+        return null;
     }
 
 

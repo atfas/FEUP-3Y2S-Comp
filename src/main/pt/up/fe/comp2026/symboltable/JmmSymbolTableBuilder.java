@@ -90,6 +90,20 @@ public class JmmSymbolTableBuilder {
         return new SymbolTableBuilderResult(symbolTable, reports);
     }
 
+    private List<Symbol> buildParams(JmmNode method) {
+        List<Symbol> params = new ArrayList<>();
+
+        for (var param : method.getChildren(PARAM)) {
+            var typeNode = param.getObject("typeNode", JmmNode.class);
+            var type = TypeUtils.convertType(typeNode, className, imports);
+            String name = param.get("name");
+
+            params.add(new Symbol(type, name));
+        }
+
+        return params;
+    }
+
     private static String buildPackage(JmmNode root) {
 
         var packageDecl = root.getChildren(PACKAGE_DECL).getFirst();
@@ -124,8 +138,7 @@ public class JmmSymbolTableBuilder {
 
         var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class), className, imports);
 
-
-        var params = List.of(new Symbol(TypeUtils.intType(), method.getChildren(PARAM).getFirst().get(JmmAttributes.PARAM.NAME)));
+        var params = buildParams(method);
 
         System.out.println("[TODO] JmmSymbolTableBuilder.buildMethod(): Assuming all VarDecls are ints, needs to be expanded");
         var locals = method.getChildren(VAR_DECL).stream()

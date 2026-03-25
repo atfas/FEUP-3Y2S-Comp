@@ -96,12 +96,26 @@ public class JmmSymbolTableBuilder {
         for (var param : method.getChildren(PARAM)) {
             var typeNode = param.getObject("typeNode", JmmNode.class);
             var type = TypeUtils.convertType(typeNode, className, imports);
-            String name = param.get("name");
+            String name = param.get(JmmAttributes.PARAM.NAME);
 
             params.add(new Symbol(type, name));
         }
 
         return params;
+    }
+
+    private List<Symbol> buildLocals(JmmNode method) {
+        List<Symbol> locals = new ArrayList<>();
+
+        for (var local : method.getChildren(VAR_DECL)) {
+            var typeNode = local.getObject("typeNode", JmmNode.class);
+            var type = TypeUtils.convertType(typeNode, className, imports);
+            String name = local.get(JmmAttributes.VAR_DECL.NAME);
+
+            locals.add(new Symbol(type, name));
+        }
+
+        return locals;
     }
 
     private static String buildPackage(JmmNode root) {
@@ -134,16 +148,11 @@ public class JmmSymbolTableBuilder {
     private MethodSymbol buildMethod(JmmNode method) {
         var methodName = method.get("name");
 
-        System.out.println("[TODO] JmmSymbolTableBuilder.buildMethod(): Assuming return type of method is always int, and always has a single int parameter, needs to be expanded");
-
         var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class), className, imports);
 
         var params = buildParams(method);
 
-        System.out.println("[TODO] JmmSymbolTableBuilder.buildMethod(): Assuming all VarDecls are ints, needs to be expanded");
-        var locals = method.getChildren(VAR_DECL).stream()
-                .map(varDecl -> new Symbol(TypeUtils.intType(), varDecl.get(JmmAttributes.VAR_DECL.NAME)))
-                .toList();
+        var locals = buildLocals(method);
 
         var visibility =  Visibility.PUBLIC;
         var isStatic = method.getBoolean(JmmAttributes.METHOD_DECL.IS_STATIC, false);

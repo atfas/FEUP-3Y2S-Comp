@@ -41,7 +41,7 @@ public class TypeUtils {
         return JmmPrimitiveType.INT;
     }
 
-    public static JmmType convertType(JmmNode typeNode) {
+    public static JmmType convertType(JmmNode typeNode, String className, List<String> imports) {
         var name = typeNode.get("name");
         var primitiveType = JmmPrimitiveType.fromString(name);
 
@@ -50,7 +50,10 @@ public class TypeUtils {
         if (primitiveType.isPresent()) {
             type = primitiveType.get();
         }else {
-            type = JmmClassType.ofInstance(name, false);
+            boolean isImported = !name.equals(className) && imports.stream()
+                    .anyMatch(i -> i.equals(name) || i.endsWith("." + name));
+
+            type = JmmClassType.ofInstance(name, isImported);
         }
 
         if (ARRAY_TYPE.check(typeNode)) {
@@ -58,6 +61,10 @@ public class TypeUtils {
         }
 
         return type;
+    }
+
+    public JmmType convertType(JmmNode typeNode) {
+        return convertType(typeNode, table.getClassName(), table.getImports());
     }
 
 

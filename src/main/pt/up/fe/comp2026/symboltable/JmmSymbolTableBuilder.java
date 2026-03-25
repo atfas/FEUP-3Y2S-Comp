@@ -109,22 +109,6 @@ public class JmmSymbolTableBuilder {
         }
     }
 
-    private Map<String, JmmType> buildTypes(JmmNode classDecl) {
-        Map<String, JmmType> map = new HashMap<>();
-
-        for (var methodDecl : classDecl.getChildren(METHOD_DECL)) {
-            var name = methodDecl.get("name");
-
-            var returnTypeNode = methodDecl.getObject("returnType", JmmNode.class);
-            var returnType = TypeUtils.convertType(returnTypeNode);
-
-            map.put(name, returnType);
-        }
-
-        return map;
-    }
-
-
     private List<MethodSymbol> buildMethods(JmmNode classDecl) {
 
         return classDecl.getChildren(METHOD_DECL).stream()
@@ -138,7 +122,7 @@ public class JmmSymbolTableBuilder {
 
         System.out.println("[TODO] JmmSymbolTableBuilder.buildMethod(): Assuming return type of method is always int, and always has a single int parameter, needs to be expanded");
 
-        var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class));
+        var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class), className, imports);
 
 
         var params = List.of(new Symbol(TypeUtils.intType(), method.getChildren(PARAM).getFirst().get(JmmAttributes.PARAM.NAME)));

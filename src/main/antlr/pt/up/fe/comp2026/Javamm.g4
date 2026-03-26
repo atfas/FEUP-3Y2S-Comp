@@ -50,7 +50,7 @@ OR : '||' ;
 
 // Whitespace & comments
 SINGLE_COMMENT: '//' ~[\r\n]*-> skip;
-BLOCK_COMMENT : '/' .? '*/' -> skip;
+BLOCK_COMMENT : '/*' .*? '*/' -> skip;
 WS : [ \t\n\r\f]+ -> skip ;
 
 // ── Grammar rules ──────────────────────────────────────────────

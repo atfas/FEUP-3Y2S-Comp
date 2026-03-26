@@ -131,17 +131,20 @@ exprList
     ;
 
 expr
-    : primary             #PrimaryExpr
-    | expr AND expr       #AndExpr
-    | expr OR expr        #OrExpr
-    | NOT expr            #NotExpr
-    | expr op='+' expr    #BinaryExpr
-    | expr op='-' expr    #BinaryExpr
-    | expr op='*' expr    #BinaryExpr
-    | expr op='/' expr    #BinaryExpr
-    | expr op='<' expr    #BinaryExpr
-    | expr op='==' expr   #BinaryExpr
+    : NOT expr                                      #NotExpr
+    | '++' expr                                     #PreIncExpr
+    | '--' expr                                     #PreDecExpr
+    | expr '++'                                     #PostIncExpr
+    | expr '--'                                     #PostDecExpr
+    | expr op=('*'|'/'|'%') expr                   #BinaryExpr
+    | expr op=('+'|'-') expr                        #BinaryExpr
+    | expr op=('<'|'>'|'<='|'>=') expr             #BinaryExpr
+    | expr op=('=='|'!=') expr                      #BinaryExpr
+    | expr AND expr                                 #AndExpr
+    | expr OR expr                                  #OrExpr
+    | primary                                       #PrimaryExpr
     ;
+
 primary
     : baseExpr postfix*
     ;
@@ -164,4 +167,4 @@ postfix
     : '.' name=ID '(' exprList? ')'  #ObjectCallExpr
     | '.' name=ID                    #FieldAccessExpr
     | '[' expr ']'                   #ArrayExpr
-     ;
+    ;

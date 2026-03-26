@@ -95,12 +95,16 @@ public class JmmSymbolTableBuilder {
 
     private List<Symbol> buildParams(JmmNode method) {
         List<Symbol> params = new ArrayList<>();
+        Set<String> names = new HashSet<>();
 
         for (var param : method.getChildren(PARAM)) {
             var typeNode = param.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
             var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             String name = param.get(JmmAttributes.PARAM.NAME);
 
+            if (!names.add(name)){
+                reports.add(newError(param, "Duplicate parameter name: " + name));
+            }
             params.add(new Symbol(type, name));
         }
 
@@ -109,12 +113,16 @@ public class JmmSymbolTableBuilder {
 
     private List<Symbol> buildLocals(JmmNode method) {
         List<Symbol> locals = new ArrayList<>();
+        Set<String> names = new HashSet<>();
 
         for (var local : method.getChildren(VAR_DECL)) {
             var typeNode = local.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
             var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             String name = local.get(JmmAttributes.VAR_DECL.NAME);
 
+            if (!names.add(name)){
+                reports.add(newError(local, "Duplicate local variable: " + name));
+            }
             locals.add(new Symbol(type, name));
         }
 
@@ -192,6 +200,17 @@ public class JmmSymbolTableBuilder {
         var params = buildParams(method);
 
         var locals = buildLocals(method);
+
+        Set<String> names = new HashSet<>();
+
+        for (var param : params){
+            names.add(param.name());
+        }
+        for (var local : locals){
+            if (!names.add(local.name())){
+                reports.add(newError(method, "Duplicate variable: " + local.name()));
+            }
+        }
 
         var visibility =  buildVisibility(method);
 

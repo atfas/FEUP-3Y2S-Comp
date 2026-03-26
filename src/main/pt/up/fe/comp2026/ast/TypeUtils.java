@@ -1,5 +1,6 @@
 package pt.up.fe.comp2026.ast;
 
+import org.specs.comp.ollir.type.ClassType;
 import pt.up.fe.comp.jmm.analysis.table.MethodSymbol;
 import pt.up.fe.comp.jmm.analysis.table.Signature;
 import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
@@ -40,12 +41,36 @@ public class TypeUtils {
         return JmmPrimitiveType.INT;
     }
 
-    public JmmType convertType(JmmNode typeNode) {
-        assert (TYPE.check(typeNode));
-
-        System.out.println("[TODO] TypeUtils.convertType(): Implement for classes and arrays");
+    public static JmmType convertType(JmmNode typeNode, String className, String fullyQualifiedName, List<String> imports) {
         var name = typeNode.get("name");
-        return JmmPrimitiveType.fromString(name).orElseThrow();
+        var primitiveType = JmmPrimitiveType.fromString(name);
+        JmmType type;
+
+        if (primitiveType.isPresent()) {
+            type = primitiveType.get();
+
+        } else if (name.equals(className)) {
+            type = JmmClassType.ofInstance(fullyQualifiedName, false);
+
+        } else {
+            var importName = imports.stream().filter(i -> i.equals(name) || i.endsWith("." + name)).findFirst();
+
+            if (importName.isPresent()) {
+                type = JmmClassType.ofInstance(importName.get(), true);
+            } else {
+                type = JmmClassType.ofInstance(name, false);
+            }
+        }
+
+        if (ARRAY_TYPE.check(typeNode)) {
+            return JmmArrayType.of(type);
+        }
+
+        return type;
+    }
+
+    public JmmType convertType(JmmNode typeNode) {
+        return convertType(typeNode, table.getClassName(), table.getFullyQualifiedName(), table.getImports());
     }
 
 

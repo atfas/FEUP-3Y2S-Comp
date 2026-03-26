@@ -29,6 +29,7 @@ public class JmmSymbolTableBuilder {
     private final List<Report> reports;
     private final List<String> imports;
     private final Map<String, String> declaredClasses;
+    private String fullyQualifiedName;
 
     /**
      * Only build() can create new instances, this ensures that each instance is used only once,
@@ -52,21 +53,19 @@ public class JmmSymbolTableBuilder {
     }
 
     public static SymbolTableBuilderResult build(JmmNode root) {
-        return new JmmSymbolTableBuilder(root).buildInternal();
+        return new JmmSymbolTableBuilder(root).buildInternal(root);
     }
 
-    private SymbolTableBuilderResult buildInternal() {
+    private SymbolTableBuilderResult buildInternal(JmmNode root) {
 
-
-        var packageDecl = root.getChildren(PACKAGE_DECL).getFirst();
-        var packagePathList = packageDecl.getObjectAsList("path", String.class);
-        var packagePath = String.join(".", packagePathList);
+        var packagePath = buildPackage(root);
+        buildImports(root);
 
         var classDecl = root.getObject("classNode", JmmNode.class);
         SpecsCheck.checkArgument(CLASS_DECL.check(classDecl), () -> "Expected a class declaration: " + classDecl);
 
         this.className = classDecl.get("name");
-        var fullyQualifiedName = packagePath + "." + className;
+        this.fullyQualifiedName = packagePath + "." + className;
 
         // Check if className is available
         if (declaredClasses.containsKey(className)) {
@@ -74,13 +73,116 @@ public class JmmSymbolTableBuilder {
         }
         declaredClasses.put(className, fullyQualifiedName);
 
+        String superQualifiedName = classDecl.getOptional("parent").orElse(null);
+
+        if (classDecl.hasAttribute("parent")) {
+            var parentName = classDecl.get("parent");
+
+            superQualifiedName = imports.stream()
+                    .filter(i -> i.equals(parentName) || i.endsWith("." + parentName))
+                    .findFirst()
+                    .orElse(parentName);
+        }
 
         var methods = buildMethods(classDecl);
 
-        var symbolTable = new JmmSymbolTable(imports, fullyQualifiedName, null, Collections.emptyList(), methods, importer);
+        var fields = buildFields(classDecl);
+
+        var symbolTable = new JmmSymbolTable(imports, fullyQualifiedName, superQualifiedName, fields, methods, importer);
 
         return new SymbolTableBuilderResult(symbolTable, reports);
     }
+
+    private List<Symbol> buildParams(JmmNode method) {
+        List<Symbol> params = new ArrayList<>();
+        Set<String> names = new HashSet<>();
+
+        for (var param : method.getChildren(PARAM)) {
+            var typeNode = param.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
+            var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
+            String name = param.get(JmmAttributes.PARAM.NAME);
+
+            if (!names.add(name)){
+                reports.add(newError(param, "Duplicate parameter name: " + name));
+            }
+            params.add(new Symbol(type, name));
+        }
+
+        return params;
+    }
+
+    private List<Symbol> buildLocals(JmmNode method) {
+        List<Symbol> locals = new ArrayList<>();
+        Set<String> names = new HashSet<>();
+
+        for (var local : method.getChildren(VAR_DECL)) {
+            var typeNode = local.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
+            var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
+            String name = local.get(JmmAttributes.VAR_DECL.NAME);
+
+            if (!names.add(name)){
+                reports.add(newError(local, "Duplicate local variable: " + name));
+            }
+            locals.add(new Symbol(type, name));
+        }
+
+        return locals;
+    }
+
+    private static String buildPackage(JmmNode root) {
+        var packageDecl = root.getChildren(PACKAGE_DECL).getFirst();
+        var packagePathList = packageDecl.getObjectAsList("path", String.class);
+
+        return String.join(".", packagePathList);
+    }
+
+    private void buildImports(JmmNode root) {
+        for (var importDecl : root.getChildren(IMPORT_DECL)) {
+
+            var importPathList = importDecl.getObjectAsList("path", String.class);
+            var path = String.join(".", importPathList);
+
+            if (!imports.contains(path)) {
+                imports.add(path);
+            }
+        }
+    }
+
+    private Visibility buildVisibility(JmmNode method) {
+        Visibility visibility = Visibility.PACKAGE_PROTECTED;
+
+        for (var visibilityDecl : method.getChildren(VISIBILITY_DECLARATION)) {
+            var vis = visibilityDecl.get(JmmAttributes.VISIBILITY_DECLARATION.VISIBILITY);
+
+            visibility = switch (vis) {
+                case "public" -> Visibility.PUBLIC;
+                case "private" -> Visibility.PRIVATE;
+                case "protected" -> Visibility.PROTECTED;
+                default -> visibility;
+            };
+        }
+
+    return visibility;
+    }
+
+    private List<Symbol> buildFields(JmmNode classDecl) {
+        List<Symbol> fields = new ArrayList<>();
+
+        for (var child : classDecl.getChildren()) {
+            if (!VAR_DECL.check(child)) {
+                continue;
+            }
+
+            var typeNode = child.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
+            var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
+            var name = child.get(JmmAttributes.VAR_DECL.NAME);
+
+            fields.add(new Symbol(type, name));
+        }
+
+        return fields;
+    }
+
 
     private List<MethodSymbol> buildMethods(JmmNode classDecl) {
 
@@ -93,21 +195,27 @@ public class JmmSymbolTableBuilder {
     private MethodSymbol buildMethod(JmmNode method) {
         var methodName = method.get("name");
 
-        System.out.println("[TODO] JmmSymbolTableBuilder.buildMethod(): Assuming return type of method is always int, and always has a single int parameter, needs to be expanded");
-        var returnType = TypeUtils.intType();
+        var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class), className, fullyQualifiedName, imports);
 
+        var params = buildParams(method);
 
-        var params = List.of(new Symbol(TypeUtils.intType(), method.getChildren(PARAM).getFirst().get(JmmAttributes.PARAM.NAME)));
+        var locals = buildLocals(method);
 
-        System.out.println("[TODO] JmmSymbolTableBuilder.buildMethod(): Assuming all VarDecls are ints, needs to be expanded");
-        var locals = method.getChildren(VAR_DECL).stream()
-                .map(varDecl -> new Symbol(TypeUtils.intType(), varDecl.get(JmmAttributes.VAR_DECL.NAME)))
-                .toList();
+        Set<String> names = new HashSet<>();
 
-        var visibility =  Visibility.PUBLIC;
+        for (var param : params){
+            names.add(param.name());
+        }
+        for (var local : locals){
+            if (!names.add(local.name())){
+                reports.add(newError(method, "Duplicate variable: " + local.name()));
+            }
+        }
+
+        var visibility =  buildVisibility(method);
+
         var isStatic = method.getBoolean(JmmAttributes.METHOD_DECL.IS_STATIC, false);
         return new MethodSymbol(methodName, returnType, params, locals, isStatic, visibility);
     }
-
 
 }

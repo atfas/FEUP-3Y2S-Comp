@@ -116,7 +116,7 @@ returnStmt
     ;
 
 assignStmt
-    : var=ID LSB expr RSB ASSIGN right=expr
+    : var=ID (LSB expr RSB)+ ASSIGN right=expr
     | var=ID ASSIGN right=expr
     ;
 

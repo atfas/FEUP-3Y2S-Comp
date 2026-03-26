@@ -96,7 +96,7 @@ public class JmmSymbolTableBuilder {
         List<Symbol> params = new ArrayList<>();
 
         for (var param : method.getChildren(PARAM)) {
-            var typeNode = param.getObject("typeNode", JmmNode.class);
+            var typeNode = param.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
             var type = TypeUtils.convertType(typeNode, className, imports);
             String name = param.get(JmmAttributes.PARAM.NAME);
 
@@ -110,7 +110,7 @@ public class JmmSymbolTableBuilder {
         List<Symbol> locals = new ArrayList<>();
 
         for (var local : method.getChildren(VAR_DECL)) {
-            var typeNode = local.getObject("typeNode", JmmNode.class);
+            var typeNode = local.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
             var type = TypeUtils.convertType(typeNode, className, imports);
             String name = local.get(JmmAttributes.VAR_DECL.NAME);
 
@@ -164,7 +164,7 @@ public class JmmSymbolTableBuilder {
                 continue;
             }
 
-            var typeNode = child.getObject("typeNode", JmmNode.class);
+            var typeNode = child.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
             var type = TypeUtils.convertType(typeNode, className, imports);
             var name = child.get(JmmAttributes.VAR_DECL.NAME);
 

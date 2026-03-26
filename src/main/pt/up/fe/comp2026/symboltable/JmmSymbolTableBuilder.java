@@ -140,7 +140,7 @@ public class JmmSymbolTableBuilder {
     }
 
     private Visibility buildVisibility(JmmNode method) {
-        Visibility visibility = Visibility.PUBLIC;
+        Visibility visibility = Visibility.PACKAGE_PROTECTED;
 
         for (var visibilityDecl : method.getChildren(VISIBILITY_DECLARATION)) {
             var vis = visibilityDecl.get(JmmAttributes.VISIBILITY_DECLARATION.VISIBILITY);

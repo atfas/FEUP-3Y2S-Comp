@@ -85,7 +85,9 @@ public class JmmSymbolTableBuilder {
 
         var methods = buildMethods(classDecl);
 
-        var symbolTable = new JmmSymbolTable(imports, fullyQualifiedName, superQualifiedName, Collections.emptyList(), methods, importer);
+        var fields = buildFields(classDecl);
+
+        var symbolTable = new JmmSymbolTable(imports, fullyQualifiedName, superQualifiedName, fields, methods, importer);
 
         return new SymbolTableBuilderResult(symbolTable, reports);
     }
@@ -131,7 +133,9 @@ public class JmmSymbolTableBuilder {
             var importPathList = importDecl.getObjectAsList("path", String.class);
             var path = String.join(".", importPathList);
 
-            imports.add(path);
+            if (!imports.contains(path)) {
+                imports.add(path);
+            }
         }
     }
 
@@ -151,6 +155,25 @@ public class JmmSymbolTableBuilder {
 
     return visibility;
     }
+
+    private List<Symbol> buildFields(JmmNode classDecl) {
+        List<Symbol> fields = new ArrayList<>();
+
+        for (var child : classDecl.getChildren()) {
+            if (!VAR_DECL.check(child)) {
+                continue;
+            }
+
+            var typeNode = child.getObject("typeNode", JmmNode.class);
+            var type = TypeUtils.convertType(typeNode, className, imports);
+            var name = child.get(JmmAttributes.VAR_DECL.NAME);
+
+            fields.add(new Symbol(type, name));
+        }
+
+        return fields;
+    }
+
 
     private List<MethodSymbol> buildMethods(JmmNode classDecl) {
 
@@ -174,6 +197,5 @@ public class JmmSymbolTableBuilder {
         var isStatic = method.getBoolean(JmmAttributes.METHOD_DECL.IS_STATIC, false);
         return new MethodSymbol(methodName, returnType, params, locals, isStatic, visibility);
     }
-
 
 }

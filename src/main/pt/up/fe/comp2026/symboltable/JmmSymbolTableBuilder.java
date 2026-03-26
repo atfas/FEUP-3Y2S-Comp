@@ -119,7 +119,6 @@ public class JmmSymbolTableBuilder {
     }
 
     private static String buildPackage(JmmNode root) {
-
         var packageDecl = root.getChildren(PACKAGE_DECL).getFirst();
         var packagePathList = packageDecl.getObjectAsList("path", String.class);
 
@@ -127,7 +126,6 @@ public class JmmSymbolTableBuilder {
     }
 
     private void buildImports(JmmNode root) {
-
         for (var importDecl : root.getChildren(IMPORT_DECL)) {
 
             var importPathList = importDecl.getObjectAsList("path", String.class);
@@ -135,6 +133,23 @@ public class JmmSymbolTableBuilder {
 
             imports.add(path);
         }
+    }
+
+    private Visibility buildVisibility(JmmNode method) {
+        Visibility visibility = Visibility.PUBLIC;
+
+        for (var visibilityDecl : method.getChildren(VISIBILITY_DECLARATION)) {
+            var vis = visibilityDecl.get(JmmAttributes.VISIBILITY_DECLARATION.VISIBILITY);
+
+            visibility = switch (vis) {
+                case "public" -> Visibility.PUBLIC;
+                case "private" -> Visibility.PRIVATE;
+                case "protected" -> Visibility.PROTECTED;
+                default -> visibility;
+            };
+        }
+
+    return visibility;
     }
 
     private List<MethodSymbol> buildMethods(JmmNode classDecl) {
@@ -154,7 +169,8 @@ public class JmmSymbolTableBuilder {
 
         var locals = buildLocals(method);
 
-        var visibility =  Visibility.PUBLIC;
+        var visibility =  buildVisibility(method);
+
         var isStatic = method.getBoolean(JmmAttributes.METHOD_DECL.IS_STATIC, false);
         return new MethodSymbol(methodName, returnType, params, locals, isStatic, visibility);
     }

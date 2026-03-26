@@ -79,7 +79,7 @@ visibilityDeclaration
     ;
 
 type
-    : name=(INT | BOOLEAN | STRING | VOID | ID) (LSB RSB)* #ArrayType
+    : name=(INT | BOOLEAN | STRING | VOID | ID) (LSB RSB)+ #ArrayType
     | name=(INT | BOOLEAN | STRING | VOID | ID) #SimpleType
     ;
 

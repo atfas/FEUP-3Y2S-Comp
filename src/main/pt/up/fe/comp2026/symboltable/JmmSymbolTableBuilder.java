@@ -29,6 +29,7 @@ public class JmmSymbolTableBuilder {
     private final List<Report> reports;
     private final List<String> imports;
     private final Map<String, String> declaredClasses;
+    private String fullyQualifiedName;
 
     /**
      * Only build() can create new instances, this ensures that each instance is used only once,
@@ -64,7 +65,7 @@ public class JmmSymbolTableBuilder {
         SpecsCheck.checkArgument(CLASS_DECL.check(classDecl), () -> "Expected a class declaration: " + classDecl);
 
         this.className = classDecl.get("name");
-        var fullyQualifiedName = packagePath + "." + className;
+        this.fullyQualifiedName = packagePath + "." + className;
 
         // Check if className is available
         if (declaredClasses.containsKey(className)) {
@@ -97,7 +98,7 @@ public class JmmSymbolTableBuilder {
 
         for (var param : method.getChildren(PARAM)) {
             var typeNode = param.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
-            var type = TypeUtils.convertType(typeNode, className, imports);
+            var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             String name = param.get(JmmAttributes.PARAM.NAME);
 
             params.add(new Symbol(type, name));
@@ -111,7 +112,7 @@ public class JmmSymbolTableBuilder {
 
         for (var local : method.getChildren(VAR_DECL)) {
             var typeNode = local.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
-            var type = TypeUtils.convertType(typeNode, className, imports);
+            var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             String name = local.get(JmmAttributes.VAR_DECL.NAME);
 
             locals.add(new Symbol(type, name));
@@ -165,7 +166,7 @@ public class JmmSymbolTableBuilder {
             }
 
             var typeNode = child.getChildren().stream().filter(TYPE::check).findFirst().orElseThrow();
-            var type = TypeUtils.convertType(typeNode, className, imports);
+            var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             var name = child.get(JmmAttributes.VAR_DECL.NAME);
 
             fields.add(new Symbol(type, name));
@@ -186,7 +187,7 @@ public class JmmSymbolTableBuilder {
     private MethodSymbol buildMethod(JmmNode method) {
         var methodName = method.get("name");
 
-        var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class), className, imports);
+        var returnType = TypeUtils.convertType(method.getObject("returnType", JmmNode.class), className, fullyQualifiedName, imports);
 
         var params = buildParams(method);
 

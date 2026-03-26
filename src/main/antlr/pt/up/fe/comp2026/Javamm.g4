@@ -4,13 +4,14 @@ grammar Javamm;
     package pt.up.fe.comp2026;
 }
 
-CLASS : 'class' ;
-PACKAGE: 'package';
+// Keywords
 IMPORT: 'import';
+PACKAGE: 'package';
+CLASS : 'class' ;
+EXTENDS : 'extends' ;
 PUBLIC: 'public';
 PRIVATE: 'private';
 PROTECTED: 'protected';
-EXTENDS : 'extends' ;
 STATIC : 'static' ;
 RETURN : 'return' ;
 IF : 'if' ;
@@ -22,34 +23,40 @@ THIS : 'this';
 TRUE : 'true';
 FALSE : 'false';
 
+// Types
+BOOLEAN: 'boolean';
 INT : 'int' ;
-VOID : 'void' ;
 STRING : 'String';
-BOOLEAN : 'boolean';
+VOID : 'void' ;
 
-STRINGDEF: '"' (~["\r\n])* '"';
+// Literals & identifiers
 INTEGERDEF : '0' | [1-9][0-9]* ;
+STRINGDEF: '"' (~["\r\n])* '"';
 ID : [a-zA-Z_$] [a-zA-Z0-9_$]* ;
 
-WS : [ \t\n\r\f]+ -> skip ;
-SEMICOLON : ';' ;
+// Symbols
 DOT : '.' ;
 COMMA : ',' ;
+SEMICOLON : ';' ;
 ASSIGN : '=' ;
 LT : '<' ;
-LBRACE : '{' ;
-RBRACE : '}' ;
 LSB : '[' ;
 RSB : ']' ;
+LBRACE : '{' ;
+RBRACE : '}' ;
 NOT: '!' ;
 AND : '&&' ;
 OR : '||' ;
 
-SINGLE_COMMENT: '//' ~[\r\n]* -> skip;
+// Whitespace & comments
+SINGLE_COMMENT: '//' ~[\r\n]*-> skip;
 BLOCK_COMMENT : '/*' .*? '*/' -> skip;
+WS : [ \t\n\r\f]+ -> skip ;
+
+// ── Grammar rules ──────────────────────────────────────────────
 
 program
-    : packageDecl? importDecl* classNode=classDecl EOF
+    : packageDecl+ importDecl* classNode=classDecl EOF
     ;
 
 packageDecl
@@ -62,9 +69,9 @@ importDecl
 
 classDecl
     : CLASS name=ID (EXTENDS parent=ID)?
-        '{'
+        LBRACE
         (varDecl | methodDecl)*
-        '}'
+        RBRACE
     ;
 
 visibilityDeclaration
@@ -72,8 +79,8 @@ visibilityDeclaration
     ;
 
 type
-    : name=(INT | BOOLEAN | STRING | VOID | ID)            #SimpleType
-    | name=(INT | BOOLEAN | STRING | VOID | ID) (LSB RSB)+ #ArrayType
+    : name=(INT | BOOLEAN | STRING | VOID | ID) (LSB RSB)+ #ArrayType
+    | name=(INT | BOOLEAN | STRING | VOID | ID) #SimpleType
     ;
 
 param
@@ -81,36 +88,36 @@ param
     ;
 
 varDecl
-    : type name=ID ';'
-    | type name=ID ASSIGN expr ';'
+    : type name=ID ASSIGN expr ';'
+    | type name=ID ';'
     ;
 
 methodDecl locals[boolean isStatic=false]
     : visibilityDeclaration? (STATIC {$isStatic=true;})?
         returnType=type name=ID
         '(' (param (COMMA param)*)? ')'
-        '{' varDecl* stmt* '}'
+        LBRACE varDecl* stmt* RBRACE
     ;
 
 stmt
-    : assignStmt ';'
-    | returnStmt
+    : LBRACE stmt* RBRACE
     | IF '(' expr ')' stmt (ELSE stmt)?
     | WHILE '(' expr ')' stmt
-    | DO stmt WHILE '(' expr ')' ';'
-    | FOR '(' forInit? ';' forCond? ';' forUpdate? ')' stmt
-    | '{' stmt* '}'
-    | expr ';'
-    ;
-
-assignStmt
-    : var=ID ASSIGN right=expr
-    | var=ID LSB expr RSB ASSIGN right=expr
+    | DO stmt WHILE '(' expr ')' SEMICOLON
+    | FOR '(' forInit? SEMICOLON forCond? SEMICOLON forUpdate? ')' stmt
+    | returnStmt
+    | assignStmt SEMICOLON
+    | expr SEMICOLON
     ;
 
 returnStmt
-    : RETURN expr ';'
-    | RETURN ';'
+    : RETURN SEMICOLON
+    | RETURN expr SEMICOLON
+    ;
+
+assignStmt
+    : var=ID (LSB expr RSB)+ ASSIGN right=expr
+    | var=ID ASSIGN right=expr
     ;
 
 forInit
@@ -122,8 +129,8 @@ forCond
     ;
 
 forUpdate
-    : assignStmt
-    | exprList
+    : exprList
+    | assignStmt
     ;
 
 exprList
@@ -131,40 +138,40 @@ exprList
     ;
 
 expr
-    : NOT expr                                      #NotExpr
-    | '++' expr                                     #PreIncExpr
-    | '--' expr                                     #PreDecExpr
-    | expr '++'                                     #PostIncExpr
-    | expr '--'                                     #PostDecExpr
-    | expr op=('*'|'/'|'%') expr                   #BinaryExpr
-    | expr op=('+'|'-') expr                        #BinaryExpr
-    | expr op=('<'|'>'|'<='|'>=') expr             #BinaryExpr
-    | expr op=('=='|'!=') expr                      #BinaryExpr
-    | expr AND expr                                 #AndExpr
-    | expr OR expr                                  #OrExpr
-    | primary                                       #PrimaryExpr
+    : NOT expr #NotExpr
+    | '++' expr #UnaryExpr
+    | '--' expr #UnaryExpr
+    | '+' expr #UnaryExpr
+    | '-' expr #UnaryExpr
+    | expr op=('*'|'/'|'%') expr #BinaryExpr
+    | expr op=('+'|'-') expr #BinaryExpr
+    | expr op=('<'|'>'|'<='|'>=') expr #BinaryExpr
+    | expr op=('=='|'!=') expr #BinaryExpr
+    | expr op=AND expr #AndExpr
+    | expr op=OR expr #OrExpr
+    | primary #PrimaryExpr
     ;
 
 primary
-    : baseExpr postfix*
+    : baseExpr postfix* #PostfixExpr
     ;
 
 baseExpr
-    : INTEGERDEF                                    #IntegerLiteral
-    | TRUE                                          #TrueLiteral
-    | FALSE                                         #FalseLiteral
-    | THIS                                          #ThisLiteral
-    | 'new' ID '(' exprList? ')'                    #NewObjectExpr
-    | 'new' type '(' ')'                            #NewObjectTypeExpr
-    | 'new' type '[' ']' '{' exprList? '}'          #NewArrayLiteralExpr
-    | 'new' type '[' expr ']'                       #NewArrayExpr
-    | ID '(' exprList? ')'                          #CallExpr
-    | ID                                            #VarRefExpr
-    | '(' expr ')'                                  #ParenExpr
+    : THIS #ThisLiteral
+    | TRUE #TrueLiteral
+    | FALSE #FalseLiteral
+    | INTEGERDEF #IntegerLiteral
+    | 'new' ID '(' exprList? ')' #NewObjectExpr
+    | 'new' type '(' ')' #NewObjectExpr
+    | 'new' type '[' expr ']' #NewArrayExpr
+    | 'new' type '[' ']' '{' exprList? '}' #NewArrayLiteralExpr
+    | ID '(' exprList? ')' #CallExpr
+    | ID #VarRefExpr
+    | '(' expr ')' #ParenExpr
     ;
 
 postfix
-    : '.' name=ID '(' exprList? ')'  #ObjectCallExpr
-    | '.' name=ID                    #FieldAccessExpr
-    | '[' expr ']'                   #ArrayExpr
+    : '[' expr ']' #ArrayExpr
+    | '.' name=ID '(' exprList? ')' #ObjectCallExpr
+    | '.' name=ID #FieldAccessExpr
     ;

@@ -121,8 +121,8 @@ public class TypeUtils {
         String operator = binaryExpr.get("op");
 
         return switch (operator) {
-            case "+", "*" -> intType();
-            case "&&", "||" -> boolType();
+            case "+", "*", "/", "%", "-" -> intType();
+            case "&&", "||", "<", ">", "<=", ">=", "==", "!=" -> boolType();
             default ->
                     throw new RuntimeException("Unknown operator '" + operator + "' of expression '" + binaryExpr + "'");
         };

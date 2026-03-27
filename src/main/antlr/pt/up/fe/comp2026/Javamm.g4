@@ -100,14 +100,14 @@ methodDecl locals[boolean isStatic=false]
     ;
 
 stmt
-    : LBRACE stmt* RBRACE
-    | IF '(' expr ')' stmt (ELSE stmt)?
-    | WHILE '(' expr ')' stmt
-    | DO stmt WHILE '(' expr ')' SEMICOLON
-    | FOR '(' forInit? SEMICOLON forCond? SEMICOLON forUpdate? ')' stmt
-    | returnStmt
-    | assignStmt SEMICOLON
-    | expr SEMICOLON
+    : LBRACE stmt* RBRACE #ComplexStmt
+    | IF '(' expr ')' stmt (ELSE stmt)? #IfStmt
+    | WHILE '(' expr ')' stmt #WhileStmt
+    | DO stmt WHILE '(' expr ')' SEMICOLON #DoStmt
+    | FOR '(' forInit? SEMICOLON forCond? SEMICOLON forUpdate? ')' stmt #ForStmt
+    | returnStmt #FullReturnStmt
+    | assignStmt SEMICOLON #FullAssignStmt
+    | expr SEMICOLON #SimpleStmt
     ;
 
 returnStmt

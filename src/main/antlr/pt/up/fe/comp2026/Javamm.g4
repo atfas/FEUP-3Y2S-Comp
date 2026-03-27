@@ -147,8 +147,8 @@ expr
     | expr op=('+'|'-') expr #BinaryExpr
     | expr op=('<'|'>'|'<='|'>=') expr #BinaryExpr
     | expr op=('=='|'!=') expr #BinaryExpr
-    | expr op=AND expr #AndExpr
-    | expr op=OR expr #OrExpr
+    | expr op=AND expr #BinaryExpr
+    | expr op=OR expr #BinaryExpr
     | primary #PrimaryExpr
     ;
 
@@ -166,7 +166,7 @@ baseExpr
     | 'new' type '[' expr ']' #NewArrayExpr
     | 'new' type '[' ']' '{' exprList? '}' #NewArrayLiteralExpr
     | ID '(' exprList? ')' #CallExpr
-    | ID #VarRefExpr
+    | name=ID #VarRefExpr
     | '(' expr ')' #ParenExpr
     ;
 

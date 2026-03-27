@@ -9,6 +9,8 @@ import pt.up.fe.comp.jmm.analysis.table.type.JmmType;
 import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmArrayType;
 import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmClassType;
 import pt.up.fe.comp.jmm.ast.JmmNode;
+import pt.up.fe.comp.jmm.ast.NodeAttribute;
+import pt.up.fe.comp2026.JavammParser;
 import pt.up.fe.comp2026.jmm.ast.JmmKind;
 import pt.up.fe.comp2026.symboltable.JmmSymbolTable;
 import pt.up.fe.specs.util.SpecsCheck;
@@ -40,6 +42,8 @@ public class TypeUtils {
     public static JmmPrimitiveType intType() {
         return JmmPrimitiveType.INT;
     }
+
+    public static JmmPrimitiveType boolType() { return JmmPrimitiveType.BOOLEAN; }
 
     public static JmmType convertType(JmmNode typeNode, String className, String fullyQualifiedName, List<String> imports) {
         var name = typeNode.get("name");
@@ -83,8 +87,10 @@ public class TypeUtils {
     public JmmType getExprType(JmmNode expr) {
         return switch (expr.getKind()) {
             case INTEGER_LITERAL -> intType();
+            case TRUE_LITERAL, FALSE_LITERAL -> boolType();
             case BINARY_EXPR -> getBinExprType(expr);
             case VAR_REF_EXPR -> getVarExprType(expr);
+            case PRIMARY_EXPR, POSTFIX_EXPR -> getExprType(expr.getChild(0));
             default ->
                     throw new UnsupportedOperationException("Can't compute type for expression kind '" + expr.getKind() + "'");
         };
@@ -92,16 +98,19 @@ public class TypeUtils {
 
 
     public Signature getMethodDeclSignature(JmmNode methodDecl) {
-        // Ensure given node is a MethodDecl
         METHOD_DECL.check(methodDecl);
 
-        // Get name of the method
         var methodName = methodDecl.get("name");
 
-        System.out.println("[TODO] TypeUtils.getMethodDeclSignature(): Supporting only methods with a single parameter that is an int, needs to be expanded");
-        var params = List.of(intType());
+        var params = new ArrayList<JmmType>();
 
-        // Create method signature with method name and types of parameters
+        // For every Param
+        for (var param : methodDecl.getChildren(PARAM)) {
+            // Get the type from "Type PramName"
+            var typeNode = param.getChild(0);
+            params.add(convertType(typeNode));
+        }
+
         return new Signature(methodName, params);
     }
 
@@ -113,14 +122,32 @@ public class TypeUtils {
 
         return switch (operator) {
             case "+", "*" -> intType();
+            case "&&", "||" -> boolType();
             default ->
                     throw new RuntimeException("Unknown operator '" + operator + "' of expression '" + binaryExpr + "'");
         };
     }
 
     private JmmType getVarExprType(JmmNode varRefExpr) {
-        System.out.println("[TODO] TypeUtils.getVarExprType(): Implement type inference for VarExpr. You will need to determine in which method the VarRef is and use the symbol table");
-        return intType();
-    }
+        var name = varRefExpr.get("name");
 
+        var methodNode = varRefExpr.getAncestor(METHOD_DECL).orElseThrow();
+        var signature = TypeUtils.with(table).getMethodDeclSignature(methodNode);
+        var currentMethod = table.getMethod(signature).orElseThrow();
+
+        // Lookup variable in method parameters
+        var param = currentMethod.getParameter(name);
+        if (param.isPresent()) return param.get().type();
+
+        // Lookup variable in local variables
+        var local = currentMethod.getLocalVariable(name);
+        if (local.isPresent()) return local.get().type();
+
+        // Lookup variable in class fields
+        var field = table.getField(name);
+        if (field.isPresent()) return field.get().type();
+
+        // If not found → error (should not happen if previous pass works)
+        throw new RuntimeException("Variable '" + name + "' not found in scope");
+    }
 }

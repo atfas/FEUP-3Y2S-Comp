@@ -77,6 +77,19 @@ public class TypeUtils {
         return convertType(typeNode, table.getClassName(), table.getFullyQualifiedName(), table.getImports());
     }
 
+    public JmmType getVarType(String name, MethodSymbol method) {
+        var local = method.getLocalVariable(name);
+        if (local.isPresent()) return local.get().type();
+
+        var param = method.getParameter(name);
+        if (param.isPresent()) return param.get().type();
+
+        var fieldOpt = table.getField(name);
+        if (fieldOpt.isPresent()) return fieldOpt.get().type();
+
+        throw new RuntimeException("Undeclared variable: " + name);
+    }
+
 
     /**
      * Gets the {@link JmmType} of an arbitrary expression.
@@ -90,7 +103,10 @@ public class TypeUtils {
             case TRUE_LITERAL, FALSE_LITERAL -> boolType();
             case BINARY_EXPR -> getBinExprType(expr);
             case VAR_REF_EXPR -> getVarExprType(expr);
-            case PRIMARY_EXPR, POSTFIX_EXPR -> getExprType(expr.getChild(0));
+            case PRIMARY_EXPR -> getExprType(expr.getChild(0));
+            case POSTFIX_EXPR -> getPostFixExprType(expr);
+            case NEW_ARRAY_EXPR -> getArrayExprType(expr);
+            case NEW_OBJECT_EXPR -> getNewObjectExprType(expr);
             default ->
                     throw new UnsupportedOperationException("Can't compute type for expression kind '" + expr.getKind() + "'");
         };
@@ -149,5 +165,49 @@ public class TypeUtils {
 
         // If not found → error (should not happen if previous pass works)
         throw new RuntimeException("Variable '" + name + "' not found in scope");
+    }
+
+    private JmmType getArrayExprType(JmmNode array){
+        return JmmArrayType.of(convertType(array.getChildren(SIMPLE_TYPE).getFirst()));
+    }
+
+    private JmmType getPostFixExprType(JmmNode expr){
+        var children = expr.getChildren();
+
+        // 1️⃣ Simple wrapper (e.g., literal, var)
+        if (children.size() == 1) {
+            return getExprType(children.getFirst());
+        }
+
+        // 2️⃣ Object method call: obj.method()
+        if (children.size() == 2 && OBJECT_CALL_EXPR.check(children.get(1))) {
+            return getObjectCallType(children.get(0), children.get(1));
+        }
+
+        // ❌ Unknown structure
+        throw new RuntimeException(
+                "Unsupported POSTFIX_EXPR structure with " + children.size() + " children: " + expr
+        );
+    }
+
+    private JmmType getObjectCallType(JmmNode caller, JmmNode funcCall){
+        String methodName = funcCall.get("name");
+
+        // TODO: allow for method call with parameters
+        Signature signature = new Signature(methodName, new ArrayList<JmmType>());
+
+        var method = table.getMethod(signature).orElseThrow(
+                () -> new RuntimeException("Method not found: " + signature)
+        );
+
+        return method.returnType();
+    }
+
+    private JmmType getNewObjectExprType(JmmNode object){
+        if (object.getChildren(SIMPLE_TYPE).isEmpty()) {
+            return convertType(object);
+        }else{
+            return convertType(object.getChildren(SIMPLE_TYPE).getFirst());
+        }
     }
 }

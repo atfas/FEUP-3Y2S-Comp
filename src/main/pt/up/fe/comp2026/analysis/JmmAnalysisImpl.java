@@ -30,7 +30,9 @@ public class JmmAnalysisImpl implements JmmAnalysis {
                 new UndeclaredVariable(table),
                 new ReturnStatementVisitor(table),
                 new IfElseVisitor(table),
-                new WhileVisitor(table)
+                new WhileVisitor(table),
+                new ArrayVisitor(table),
+                new VariableInitializerVisitor(table)
         );
     }
 

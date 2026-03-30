@@ -161,7 +161,7 @@ baseExpr
     | TRUE #TrueLiteral
     | FALSE #FalseLiteral
     | INTEGERDEF #IntegerLiteral
-    | 'new' ID '(' exprList? ')' #NewObjectExpr
+    | 'new' name=ID '(' exprList? ')' #NewObjectExpr
     | 'new' type '(' ')' #NewObjectExpr
     | 'new' type '[' expr ']' #NewArrayExpr
     | 'new' type '[' ']' '{' exprList? '}' #NewArrayLiteralExpr

@@ -198,8 +198,21 @@ public class TypeUtils {
     private JmmType getObjectCallType(JmmNode caller, JmmNode funcCall){
         String methodName = funcCall.get("name");
 
-        // TODO: allow for method call with parameters
-        Signature signature = new Signature(methodName, new ArrayList<JmmType>());
+        // Extract argument types
+        List<JmmType> argTypes = new ArrayList<>();
+        Optional<JmmNode> exprListOpt = funcCall.getChildren().stream()
+                .filter(c -> c.getKind() == EXPR_LIST)
+                .findFirst();
+
+        if (exprListOpt.isPresent()) {
+            JmmNode exprList = exprListOpt.get();
+            for (JmmNode arg : exprList.getChildren()) {
+                argTypes.add(getExprType(arg));
+            }
+        }
+
+        // Lookup method by name + parameter types
+        Signature signature = new Signature(methodName, argTypes);
 
         var method = table.getMethod(signature).orElseThrow(
                 () -> new RuntimeException("Method not found: " + signature)

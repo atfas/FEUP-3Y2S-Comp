@@ -32,7 +32,8 @@ public class JmmAnalysisImpl implements JmmAnalysis {
                 new IfElseVisitor(table),
                 new WhileVisitor(table),
                 new ArrayVisitor(table),
-                new VariableInitializerVisitor(table)
+                new VariableInitializerVisitor(table),
+                new OperatorVisitor(table)
         );
     }
 

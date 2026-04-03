@@ -99,6 +99,7 @@ public class TypeUtils {
      */
     public JmmType getExprType(JmmNode expr) {
         return switch (expr.getKind()) {
+            case THIS_LITERAL -> JmmClassType.ofInstance(table.getFullyQualifiedName(), false);
             case INTEGER_LITERAL -> intType();
             case TRUE_LITERAL, FALSE_LITERAL, NOT_EXPR -> boolType();
             case BINARY_EXPR -> getBinExprType(expr);

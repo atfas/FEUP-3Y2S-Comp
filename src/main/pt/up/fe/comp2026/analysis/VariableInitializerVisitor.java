@@ -75,45 +75,98 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
         return null;
     }
 
+    private Boolean isValidAssign(JmmType varType, JmmType givenType){
+        System.out.println("=== isValidAssign ===");
+        System.out.println("varType: " + varType + " class: " + varType.getClass().getSimpleName());
+        System.out.println("givenType: " + givenType + " class: " + givenType.getClass().getSimpleName());
+
+        // If either type is explicitly imported (not java.lang, not 'this')
+        if (varType instanceof JmmClassType classType && isExplicitlyImported(classType)
+                && !classType.name().equals(table.getClassName())
+                && !classType.name().equals(table.getFullyQualifiedName())) return true;
+        if (givenType instanceof JmmClassType classType && isExplicitlyImported(classType)
+                && !classType.name().equals(table.getClassName())
+                && !classType.name().equals(table.getFullyQualifiedName())) return true;
+        // Primitive types: must match exactly
+        if (varType instanceof JmmPrimitiveType && givenType instanceof JmmPrimitiveType) {
+            return varType.equals(givenType);
+        }
+
+        // Array types: must match exactly
+        if (varType instanceof JmmArrayType && givenType instanceof JmmArrayType) {
+            return varType.equals(givenType);
+        }
+
+        // Class types
+        if (varType instanceof JmmClassType varClass && givenType instanceof JmmClassType givenClass) {
+            System.out.println("varClass.name(): " + varClass.name());
+            System.out.println("givenClass.name(): " + givenClass.name());
+            System.out.println("table.getFullyQualifiedName(): " + table.getFullyQualifiedName());
+            System.out.println("table.getClassName(): " + table.getClassName());
+            if (varType.equals(givenType)) {
+                return isJavaLang(varClass) || varClass.name().equals(table.getClassName());
+            }
+
+            // Handle 'this' assigned to a type
+            if (givenClass.name().equals(table.getFullyQualifiedName()) ||
+                    givenClass.name().equals(table.getClassName())) {
+                System.out.println("IN THIS BLOCK");
+                System.out.println("varClass.name(): " + varClass.name());
+                System.out.println("superName: " + table.getSuper());
+                if (varClass.name().equals(table.getClassName()) ||
+                        varClass.name().equals(table.getFullyQualifiedName())) return true;
+
+                String superName = table.getSuper();
+                if (superName == null || superName.isEmpty()) return false;
+
+                Class<?> varClazz = resolveClass(varClass.name());
+                Class<?> superClazz = resolveClass(superName);
+                if (varClazz != null && superClazz != null) {
+                    return varClazz.isAssignableFrom(superClazz);
+                }
+                return false;
+            }
+
+            // Different types — check subtype via reflection
+            Class<?> varClazz = resolveClass(varClass.name());
+            Class<?> givenClazz = resolveClass(givenClass.name());
+            if (varClazz != null && givenClazz != null) {
+                return varClazz.isAssignableFrom(givenClazz);
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
     private boolean isExplicitlyImported(JmmClassType classType) {
         String name = classType.name();
-        // Allow the current class itself
         if (name.equals(table.getClassName())) return true;
-        // Allow explicitly imported classes
-        if (table.getImports().stream().anyMatch(imp -> imp.equals(name) || imp.endsWith("." + name))) return true;
-        // Allow java.lang.* classes (always available in Java)
+        return table.getImports().stream()
+                .anyMatch(imp -> imp.equals(name) || imp.endsWith("." + name));
+    }
+
+    private boolean isJavaLang(JmmClassType classType) {
         try {
-            Class.forName("java.lang." + name);
+            Class.forName("java.lang." + classType.name());
             return true;
         } catch (ClassNotFoundException e) {
             return false;
         }
     }
 
-    private Boolean isValidAssign(JmmType varType, JmmType givenType){
-        // If either type is an explicitly imported class, give benefit of the doubt
-        if (varType instanceof JmmClassType classType && isExplicitlyImported(classType)) return true;
-        if (givenType instanceof JmmClassType classType && isExplicitlyImported(classType)) return true;
-
-        // Primitive types: must match exactly
-        if (varType instanceof JmmPrimitiveType && givenType instanceof JmmPrimitiveType) {
-            return varType.equals(givenType);
+    private Class<?> resolveClass(String name) {
+        // Try explicit import
+        var fqn = table.getImports().stream()
+                .filter(imp -> imp.equals(name) || imp.endsWith("." + name))
+                .findFirst();
+        try {
+            if (fqn.isPresent()) return Class.forName(fqn.get());
+            // Try java.lang
+            return Class.forName("java.lang." + name);
+        } catch (ClassNotFoundException e) {
+            return null;
         }
-
-        // Array types: must match exactly (simpler)
-        if (varType instanceof JmmArrayType && givenType instanceof JmmArrayType) {
-            return varType.equals(givenType);
-        }
-
-        // Class types: only allow if both are the same AND at least one is known
-        if (varType instanceof JmmClassType && givenType instanceof JmmClassType) {
-            if (!isExplicitlyImported((JmmClassType) varType) && !isExplicitlyImported((JmmClassType) givenType)) {
-                return false; // neither is imported — reject
-            }
-            if (varType.equals(givenType)) return true;
-            return false;
-        }
-
-        return false;
     }
 }

@@ -100,14 +100,14 @@ methodDecl locals[boolean isStatic=false]
     ;
 
 stmt
-    : LBRACE stmt* RBRACE
-    | IF '(' expr ')' stmt (ELSE stmt)?
-    | WHILE '(' expr ')' stmt
-    | DO stmt WHILE '(' expr ')' SEMICOLON
-    | FOR '(' forInit? SEMICOLON forCond? SEMICOLON forUpdate? ')' stmt
-    | returnStmt
-    | assignStmt SEMICOLON
-    | expr SEMICOLON
+    : LBRACE stmt* RBRACE #ComplexStmt
+    | IF '(' expr ')' stmt (ELSE stmt)? #IfStmt
+    | WHILE '(' expr ')' stmt #WhileStmt
+    | DO stmt WHILE '(' expr ')' SEMICOLON #DoStmt
+    | FOR '(' forInit? SEMICOLON forCond? SEMICOLON forUpdate? ')' stmt #ForStmt
+    | returnStmt #FullReturnStmt
+    | assignStmt SEMICOLON #FullAssignStmt
+    | expr SEMICOLON #SimpleStmt
     ;
 
 returnStmt
@@ -147,8 +147,8 @@ expr
     | expr op=('+'|'-') expr #BinaryExpr
     | expr op=('<'|'>'|'<='|'>=') expr #BinaryExpr
     | expr op=('=='|'!=') expr #BinaryExpr
-    | expr op=AND expr #AndExpr
-    | expr op=OR expr #OrExpr
+    | expr op=AND expr #BinaryExpr
+    | expr op=OR expr #BinaryExpr
     | primary #PrimaryExpr
     ;
 
@@ -161,12 +161,12 @@ baseExpr
     | TRUE #TrueLiteral
     | FALSE #FalseLiteral
     | INTEGERDEF #IntegerLiteral
-    | 'new' ID '(' exprList? ')' #NewObjectExpr
+    | 'new' name=ID '(' exprList? ')' #NewObjectExpr
     | 'new' type '(' ')' #NewObjectExpr
     | 'new' type '[' expr ']' #NewArrayExpr
     | 'new' type '[' ']' '{' exprList? '}' #NewArrayLiteralExpr
     | ID '(' exprList? ')' #CallExpr
-    | ID #VarRefExpr
+    | name=ID #VarRefExpr
     | '(' expr ')' #ParenExpr
     ;
 

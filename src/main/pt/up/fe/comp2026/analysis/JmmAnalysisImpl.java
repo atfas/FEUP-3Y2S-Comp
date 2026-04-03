@@ -27,7 +27,15 @@ public class JmmAnalysisImpl implements JmmAnalysis {
      */
     private List<AnalysisPass> buildPasses(SymbolTable table) {
         return List.of(
-                // TODO: Add your analysis passes here
+                new ImportValidator(),
+                new UndeclaredVariable(table),
+                new MethodCallVisitor(table),
+                new ReturnStatementVisitor(table),
+                new IfElseVisitor(table),
+                new WhileVisitor(table),
+                new ArrayVisitor(table),
+                new VariableInitializerVisitor(table),
+                new OperatorVisitor(table)
         );
     }
 

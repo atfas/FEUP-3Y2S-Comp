@@ -82,6 +82,21 @@ public class JmmSymbolTableBuilder {
                     .filter(i -> i.equals(parentName) || i.endsWith("." + parentName))
                     .findFirst()
                     .orElse(parentName);
+
+            // Validate that parent is imported or implicitly available (java.lang.*)
+            boolean isImported = imports.stream()
+                    .anyMatch(i -> i.equals(parentName) || i.endsWith("." + parentName));
+            boolean isImplicit = importer.isImplicitImport(parentName);
+
+            if (!isImported && !isImplicit) {
+                reports.add(newError(classDecl,
+                        "Parent class '" + parentName + "' is not imported"));
+            }
+        }
+
+        // Check if class has same name as super class
+        if (superQualifiedName != null && superQualifiedName.equals(className)) {
+            reports.add(newError(classDecl, "Class cannot extend itself: " + className));
         }
 
         var methods = buildMethods(classDecl);

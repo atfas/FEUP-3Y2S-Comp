@@ -84,6 +84,11 @@ public class JmmSymbolTableBuilder {
                     .orElse(parentName);
         }
 
+        // Check if class has same name as super class
+        if (superQualifiedName != null && superQualifiedName.equals(className)) {
+            reports.add(newError(classDecl, "Class cannot extend itself: " + className));
+        }
+
         var methods = buildMethods(classDecl);
 
         var fields = buildFields(classDecl);

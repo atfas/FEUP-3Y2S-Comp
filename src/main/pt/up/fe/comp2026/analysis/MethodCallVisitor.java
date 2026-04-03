@@ -121,9 +121,18 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
     private SearchResult methodExistsInHierarchy(SymbolTable currentTable, String methodName) {
         if (!currentTable.getMethods(methodName).isEmpty()) return SearchResult.FOUND;
 
-        String superName = currentTable.getSuperFullyQualifiedName();
+        String superName = currentTable.getSuper();
         if (superName == null || superName.isEmpty()) return SearchResult.NOT_FOUND;
 
+        // Check if super is a java.lang.* class — treat as resolvable
+        try {
+            Class<?> superClass = Class.forName("java.lang." + superName);
+            boolean methodExists = java.util.Arrays.stream(superClass.getMethods())
+                    .anyMatch(m -> m.getName().equals(methodName));
+            return methodExists ? SearchResult.FOUND : SearchResult.NOT_FOUND;
+        } catch (ClassNotFoundException ignored) {}
+
+        // Check imports
         var parentTableOpt = this.table.getImportedSymbolTable(superName);
         if (parentTableOpt.isEmpty()) return SearchResult.UNRESOLVABLE;
 

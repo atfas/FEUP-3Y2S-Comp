@@ -49,7 +49,7 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
 
     private Void wrongLiteralInitializer(JmmNode declaration, SymbolTable table){
         if (declaration.getChildren().toArray().length < 2) return null;
-        
+
         var varType = TypeUtils.with(table).convertType(declaration.getChild(0));
         var assignType = TypeUtils.with(table).getExprType(declaration.getChild(1));
 
@@ -75,18 +75,25 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
         return null;
     }
 
+    private boolean isExplicitlyImported(JmmClassType classType) {
+        String name = classType.name();
+        // Allow the current class itself
+        if (name.equals(table.getClassName())) return true;
+        // Allow explicitly imported classes
+        if (table.getImports().stream().anyMatch(imp -> imp.equals(name) || imp.endsWith("." + name))) return true;
+        // Allow java.lang.* classes (always available in Java)
+        try {
+            Class.forName("java.lang." + name);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
     private Boolean isValidAssign(JmmType varType, JmmType givenType){
-        // If either type is an imported class, give benefit of the doubt
-        if (varType instanceof JmmClassType classType) {
-            boolean isImported = table.getImports().stream()
-                    .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
-            if (isImported) return true;
-        }
-        if (givenType instanceof JmmClassType classType) {
-            boolean isImported = table.getImports().stream()
-                    .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
-            if (isImported) return true;
-        }
+        // If either type is an explicitly imported class, give benefit of the doubt
+        if (varType instanceof JmmClassType classType && isExplicitlyImported(classType)) return true;
+        if (givenType instanceof JmmClassType classType && isExplicitlyImported(classType)) return true;
 
         // Primitive types: must match exactly
         if (varType instanceof JmmPrimitiveType && givenType instanceof JmmPrimitiveType) {
@@ -98,12 +105,15 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
             return varType.equals(givenType);
         }
 
-        // Class types: allow subclass assignments
+        // Class types: only allow if both are the same AND at least one is known
         if (varType instanceof JmmClassType && givenType instanceof JmmClassType) {
+            if (!isExplicitlyImported((JmmClassType) varType) && !isExplicitlyImported((JmmClassType) givenType)) {
+                return false; // neither is imported — reject
+            }
             if (varType.equals(givenType)) return true;
-            // TODO: Finish subclass assignment analysis
             return false;
         }
+
         return false;
     }
 }

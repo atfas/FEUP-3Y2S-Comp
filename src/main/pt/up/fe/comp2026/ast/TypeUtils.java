@@ -224,8 +224,7 @@ public class TypeUtils {
             boolean isImported = table.getImports().stream()
                     .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
             if (isImported) {
-                // Return int as a safe default for unknown imported method return types
-                return intType();
+                return callerType;
             }
         }
 

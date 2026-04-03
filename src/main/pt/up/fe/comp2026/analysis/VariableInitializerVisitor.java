@@ -76,6 +76,18 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
     }
 
     private Boolean isValidAssign(JmmType varType, JmmType givenType){
+        // If either type is an imported class, give benefit of the doubt
+        if (varType instanceof JmmClassType classType) {
+            boolean isImported = table.getImports().stream()
+                    .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
+            if (isImported) return true;
+        }
+        if (givenType instanceof JmmClassType classType) {
+            boolean isImported = table.getImports().stream()
+                    .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
+            if (isImported) return true;
+        }
+
         // Primitive types: must match exactly
         if (varType instanceof JmmPrimitiveType && givenType instanceof JmmPrimitiveType) {
             return varType.equals(givenType);

@@ -179,17 +179,14 @@ public class TypeUtils {
     private JmmType getPostFixExprType(JmmNode expr){
         var children = expr.getChildren();
 
-        // 1️⃣ Simple wrapper (e.g., literal, var)
         if (children.size() == 1) {
             return getExprType(children.getFirst());
         }
 
-        // 2️⃣ Object method call: obj.method()
         if (children.size() == 2 && OBJECT_CALL_EXPR.check(children.get(1))) {
             return getObjectCallType(children.get(0), children.get(1));
         }
 
-        // ❌ Unknown structure
         throw new RuntimeException(
                 "Unsupported POSTFIX_EXPR structure with " + children.size() + " children: " + expr
         );
@@ -214,11 +211,25 @@ public class TypeUtils {
         // Lookup method by name + parameter types
         Signature signature = new Signature(methodName, argTypes);
 
-        var method = table.getMethod(signature).orElseThrow(
-                () -> new RuntimeException("Method not found: " + signature)
-        );
+        var method = table.getMethod(signature);
 
-        return method.returnType();
+        // If found in local symbol table, return its return type
+        if (method.isPresent()) {
+            return method.get().returnType();
+        }
+
+        // If not found, check if caller is an imported class — give benefit of the doubt
+        JmmType callerType = getExprType(caller);
+        if (callerType instanceof JmmClassType classType) {
+            boolean isImported = table.getImports().stream()
+                    .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
+            if (isImported) {
+                // Return int as a safe default for unknown imported method return types
+                return intType();
+            }
+        }
+
+        throw new RuntimeException("Method not found: " + signature);
     }
 
     private JmmType getNewObjectExprType(JmmNode object){

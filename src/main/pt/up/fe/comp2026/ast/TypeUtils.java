@@ -57,7 +57,15 @@ public class TypeUtils {
         }
 
         if (ARRAY_TYPE.check(typeNode)) {
-            return JmmArrayType.of(type);
+            int colStart = Integer.parseInt(typeNode.get("colStart"));
+            int colEnd = Integer.parseInt(typeNode.get("colEnd"));
+            int spanLength = colEnd - colStart + 1;
+            int dims = (spanLength - name.length()) / 2;
+            if (dims < 1) dims = 1;
+
+            for (int i = 0; i < dims; i++) {
+                type = JmmArrayType.of(type);
+            }
         }
 
         return type;
@@ -221,7 +229,7 @@ public class TypeUtils {
     }
 
     private JmmType getCallExprType(JmmNode callExpr) {
-        String methodName = callExpr.get("value");
+        String methodName = callExpr.get("name");
         List<JmmType> argTypes = new ArrayList<>();
 
         for (var child : callExpr.getChildren()) {

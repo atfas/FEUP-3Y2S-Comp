@@ -79,8 +79,12 @@ visibilityDeclaration
     ;
 
 type
-    : name=(INT | BOOLEAN | STRING | VOID | ID) (LSB RSB)+ #ArrayType
+    : name=(INT | BOOLEAN | STRING | VOID | ID) arrayDim+ #ArrayType
     | name=(INT | BOOLEAN | STRING | VOID | ID) #SimpleType
+    ;
+
+arrayDim
+    : LSB RSB
     ;
 
 param
@@ -165,7 +169,7 @@ baseExpr
     | 'new' type '(' ')' #NewObjectExpr
     | 'new' type '[' expr ']' #NewArrayExpr
     | 'new' type '[' ']' '{' exprList? '}' #NewArrayLiteralExpr
-    | ID '(' exprList? ')' #CallExpr
+    | name=ID '(' exprList? ')' #CallExpr
     | name=ID #VarRefExpr
     | '(' expr ')' #ParenExpr
     ;

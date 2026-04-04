@@ -25,6 +25,25 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
         addVisit(OBJECT_CALL_EXPR, this::visitObjectCallExpr);
         addVisit(CALL_EXPR, this::visitCallExpr);
         addVisit(NEW_OBJECT_EXPR, this::visitNewObjectExpr);
+        addVisit(POSTFIX_EXPR, this::visitPostfixExpr);
+    }
+
+    private Void visitPostfixExpr(JmmNode postfixExpr, SymbolTable table) {
+        // Handles implicit calls: foo() where POSTFIX_EXPR has a single CALL_EXPR child with no name
+        if (postfixExpr.getNumChildren() == 1) {
+            var child = postfixExpr.getChild(0);
+            if (CALL_EXPR.check(child) && child.getOptional("name").isEmpty()) {
+                // The method name must be on the POSTFIX_EXPR itself or its VAR_REF parent
+                // Check parent PRIMARY_EXPR -> look for name on the POSTFIX_EXPR
+                var nameOpt = postfixExpr.getOptional("name");
+                if (nameOpt.isEmpty()) {
+                    // Try getting it from the CALL_EXPR's attributes list
+                    var attrs = child.getAttributes();
+                    System.out.println("CALL_EXPR attrs: " + attrs);
+                }
+            }
+        }
+        return null;
     }
 
     private List<JmmType> collectArgTypes(JmmNode callNode, SymbolTable table) {
@@ -86,7 +105,17 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
 
 
     private Void visitCallExpr(JmmNode callNode, SymbolTable table) {
-        String methodName = callNode.get("value");
+        var nameOpt = callNode.getOptional("name");
+
+        // For standalone implicit calls like fxx(), the name may be on the parent POSTFIX_EXPR
+        if (nameOpt.isEmpty()) {
+            var parent = callNode.getParent();
+            nameOpt = parent.getOptional("name");
+        }
+
+        if (nameOpt.isEmpty()) return null;
+
+        String methodName = nameOpt.get();
         List<JmmType> argTypes = collectArgTypes(callNode, table);
         validateImplicitOrThisCall(callNode, table, methodName, argTypes);
         return null;
@@ -94,54 +123,115 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
 
     private void validateImplicitOrThisCall(JmmNode callNode, SymbolTable table,
                                             String methodName, List<JmmType> argTypes) {
-        // Check current class first (exact signature match)
-        var candidates = table.getMethods(methodName);
+        String superName = table.getSuperFullyQualifiedName();
 
-        if (!candidates.isEmpty()) {
-            boolean anyMatch = candidates.stream().anyMatch(candidate ->
-                    typesMatch(candidate.parameters().stream()
-                            .map(p -> p.type()).toList(), argTypes));
-            if (!anyMatch) {
-                addReport(newError(callNode,
-                        "No matching overload of '" + methodName + "' in class '"
-                                + table.getClassName() + "' for argument types " + argTypes));
-            }
-            return;
+        List<MethodSymbol> allCandidates = new ArrayList<>(table.getMethods(methodName));
+
+        if (superName != null && !superName.isEmpty()) {
+            collectFromHierarchy(superName, methodName, allCandidates);
         }
 
-        // Not in current class — walk the super hierarchy
-        SearchResult result = methodExistsInHierarchy(table, methodName);
-        if (result == SearchResult.NOT_FOUND) {
+        if (allCandidates.isEmpty()) {
+            if (superName != null && !superName.isEmpty()) {
+                var superTableOpt = this.table.getImportedSymbolTable(superName);
+                if (superTableOpt.isEmpty()) {
+                    // Try reflection to verify the method actually exists in the JDK super hierarchy
+                    if (methodExistsInJdkHierarchy(superName, methodName)) return;
+                    addReport(newError(callNode,
+                            "Cannot call method '" + methodName + "': not defined in class '"
+                                    + table.getClassName() + "'"));
+                    return;
+                }
+            }
             addReport(newError(callNode,
                     "Cannot call method '" + methodName + "': not defined in class '"
                             + table.getClassName() + "'"));
+            return;
+        }
+
+        boolean anyMatch = allCandidates.stream().anyMatch(candidate ->
+                typesMatch(candidate.parameters().stream()
+                        .map(p -> p.type()).toList(), argTypes));
+
+        if (!anyMatch) {
+            if (superName != null && !superName.isEmpty()) {
+                var superTableOpt = this.table.getImportedSymbolTable(superName);
+                if (superTableOpt.isEmpty()) {
+                    if (methodExistsInJdkHierarchy(superName, methodName)) return;
+                }
+            }
+            addReport(newError(callNode,
+                    "No matching overload of '" + methodName + "' in class '"
+                            + table.getClassName() + "' for argument types " + argTypes));
+        }
+    }
+
+    private boolean methodExistsInJdkHierarchy(String className, String methodName) {
+        // Try java.lang package first, then bare class name
+        String[] candidates = { "java.lang." + className, className };
+        for (String fqn : candidates) {
+            try {
+                Class<?> clazz = Class.forName(fqn);
+                boolean found = java.util.Arrays.stream(clazz.getMethods())
+                        .anyMatch(m -> m.getName().equals(methodName));
+                if (found) return true;
+            } catch (ClassNotFoundException ignored) {}
+        }
+        // Also check imports
+        var importedFqn = this.table.getImports().stream()
+                .filter(imp -> imp.equals(className) || imp.endsWith("." + className))
+                .findFirst();
+        if (importedFqn.isPresent()) {
+            try {
+                Class<?> clazz = Class.forName(importedFqn.get());
+                return java.util.Arrays.stream(clazz.getMethods())
+                        .anyMatch(m -> m.getName().equals(methodName));
+            } catch (ClassNotFoundException ignored) {}
+        }
+        return false; // can't resolve — give benefit of the doubt
+    }
+
+    private void collectFromHierarchy(String className, String methodName, List<MethodSymbol> collected) {
+        var tableOpt = this.table.getImportedSymbolTable(className);
+        if (tableOpt.isEmpty()) return;
+        var t = tableOpt.get();
+        collected.addAll(t.getMethods(methodName));
+        String superName = t.getSuperFullyQualifiedName();
+        if (superName != null && !superName.isEmpty()) {
+            collectFromHierarchy(superName, methodName, collected);
         }
     }
 
 
     private Void visitNewObjectExpr(JmmNode newObjExpr, SymbolTable table) {
-        // Collect arg types from EXPR_LIST children of the NEW_OBJECT_EXPR
         List<JmmType> argTypes = collectArgTypes(newObjExpr, table);
 
-        // Determine the class being constructed
+        // Get class name - either from 'name' attribute directly or from SIMPLE_TYPE child
+        String className;
         var simpleTypeNodes = newObjExpr.getChildren(SIMPLE_TYPE);
-        if (simpleTypeNodes.isEmpty()) return null;
+        if (!simpleTypeNodes.isEmpty()) {
+            className = simpleTypeNodes.get(0).get("name");
+        } else if (newObjExpr.hasAttribute("name")) {
+            className = newObjExpr.get("name");
+        } else {
+            return null;
+        }
 
-        String className = simpleTypeNodes.get(0).get("name");
-
-        // Look up the symbol table for that class
+        System.out.println("visitNewObjectExpr className: " + className);
         var classTableOpt = this.table.getImportedSymbolTable(className);
+        System.out.println("classTableOpt present: " + classTableOpt.isPresent());
+        if (classTableOpt.isPresent()) {
+            System.out.println("constructors: " + classTableOpt.get().getMethods(className));
+        }
+
         if (classTableOpt.isEmpty()) {
-            // Try reflection
             tryReflectionConstructorValidation(newObjExpr, className, argTypes);
             return null;
         }
 
         var classTable = classTableOpt.get();
-        // Constructors are represented as methods named the same as the class
         var constructors = classTable.getMethods(className);
         if (constructors.isEmpty()) {
-            // No explicit constructor info — give benefit of the doubt
             return null;
         }
 

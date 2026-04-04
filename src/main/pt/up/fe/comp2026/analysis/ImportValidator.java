@@ -24,25 +24,18 @@ public class ImportValidator extends AnalysisVisitor {
         String path = importNode.get("path");
         String fqn = path.substring(1, path.length() - 1).replace(", ", ".");
 
-        // Validate java.* imports via reflection
-        if (fqn.startsWith("java.") || fqn.startsWith("javax.")) {
-            try {
-                Class.forName(fqn);
-            } catch (ClassNotFoundException e) {
-                addReport(newError(importNode, "Imported class '" + fqn + "' does not exist"));
-            }
-            return null;
-        }
-
-        // For other imports, check if they exist in libs-jmm or on classpath
+        // Try classpath first
         try {
             Class.forName(fqn);
-            return null; // found on classpath
+            return null;
         } catch (ClassNotFoundException ignored) {}
 
-        if (classExistsInLibs(fqn)) return null; // found in libs
+        // Try libs-jmm/compiled
+        String filePath = "libs-jmm/compiled/" + fqn.replace(".", "/") + ".class";
+        if (new java.io.File(filePath).exists()) return null;
 
-        // Unknown import — give benefit of the doubt (may be user-defined)
+        // Not found anywhere — report error
+        addReport(newError(importNode, "Imported class '" + fqn + "' does not exist"));
         return null;
     }
 

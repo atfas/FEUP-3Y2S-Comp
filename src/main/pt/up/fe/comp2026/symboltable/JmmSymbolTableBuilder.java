@@ -135,14 +135,6 @@ public class JmmSymbolTableBuilder {
             var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             String name = local.get(JmmAttributes.VAR_DECL.NAME);
 
-            // Validate that imported types actually exist
-            if (type instanceof JmmClassType classType && classType.isImported()) {
-                String typeFqn = classType.fullyQualifiedName();
-                if (!typeExistsInLibsOrClasspath(typeFqn)) {
-                    reports.add(newError(local, "Type '" + typeFqn + "' does not exist"));
-                }
-            }
-
             if (!names.add(name)) {
                 reports.add(newError(local, "Duplicate local variable: " + name));
             }
@@ -150,23 +142,6 @@ public class JmmSymbolTableBuilder {
         }
 
         return locals;
-    }
-
-    private boolean typeExistsInLibsOrClasspath(String fqn) {
-        // Check classpath
-        try {
-            Class.forName(fqn);
-            return true;
-        } catch (ClassNotFoundException ignored) {}
-
-        // Check libs-jmm/compiled
-        String filePath = "libs-jmm/compiled/" + fqn.replace(".", "/") + ".class";
-        if (new java.io.File(filePath).exists()) return true;
-
-        // Check if it's the current class or a sibling
-        if (fqn.equals(fullyQualifiedName) || fqn.equals(className)) return true;
-
-        return false;
     }
 
     private static String buildPackage(JmmNode root) {

@@ -80,6 +80,7 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
     }
 
     private Void arrayAssignChecks(JmmNode varAssign, SymbolTable table) {
+
         var methodNode = varAssign.getAncestor(METHOD_DECL).orElseThrow();
         var signature = TypeUtils.with(table).getMethodDeclSignature(methodNode);
         var method = table.getMethod(signature).orElseThrow();
@@ -92,7 +93,8 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
         }
 
         var assignType = TypeUtils.with(table).getExprType(varAssign.getChild(0));
-
+        System.out.println("varType: " + varType + " dim=" + (varType instanceof JmmArrayType at ? at.dimension() : "N/A"));
+        System.out.println("assignType: " + assignType + " dim=" + (assignType instanceof JmmArrayType at ? at.dimension() : "N/A"));
         if (varType.isArray() && !assignType.isArray()) {
             addReport(newError(varAssign, "Array variable must be assigned an array"));
         } else if (!varType.isArray() && assignType.isArray()) {
@@ -140,6 +142,9 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
     private Void arrayAccessChecks(JmmNode postfixExpr, SymbolTable table) {
         var children = postfixExpr.getChildren();
         if (children.size() <= 1) return null;
+
+        // Skip if this is a multi-dim array creation (new int[b][c][d])
+        if (NEW_ARRAY_EXPR.check(children.get(0))) return null;
 
         var currentType = TypeUtils.with(table).getExprType(children.get(0));
 

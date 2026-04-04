@@ -57,14 +57,12 @@ public class TypeUtils {
         }
 
         if (ARRAY_TYPE.check(typeNode)) {
-            // Count the arrayDim children (each "[]" is one child)
+            // Count ARRAY_DIM children for multi-dimensional arrays
             int dims = (int) typeNode.getChildren().stream()
-                    .filter(c -> "ArrayDim".equals(c.getKind()))
+                    .filter(c -> "ArrayDim".equals(c.getKind()) || ARRAY_DIM.check(c))
                     .count();
             if (dims < 1) dims = 1;
-
-            // Pass the final base type with the total dimension count
-            type = JmmArrayType.of(type, dims);   // one flat wrapper
+            type = JmmArrayType.of(type, dims);
         }
 
         return type;
@@ -169,22 +167,37 @@ public class TypeUtils {
     }
 
     private JmmType getArrayExprType(JmmNode array) {
-        // Get base element type from SIMPLE_TYPE child
         var simpleTypeNodes = array.getChildren(SIMPLE_TYPE);
         JmmType baseType;
         if (!simpleTypeNodes.isEmpty()) {
-            baseType = convertType(simpleTypeNodes.get(0));
+            // Get the primitive/class base type directly, not through convertType which adds array wrapping
+            var typeNode = simpleTypeNodes.get(0);
+            var name = typeNode.get("name");
+            var primitiveType = JmmPrimitiveType.fromString(name);
+            if (primitiveType.isPresent()) {
+                baseType = primitiveType.get();
+            } else if (name.equals(table.getClassName())) {
+                baseType = JmmClassType.ofInstance(table.getFullyQualifiedName(), false);
+            } else {
+                var importedFqn = table.getImports().stream()
+                        .filter(imp -> imp.equals(name) || imp.endsWith("." + name))
+                        .findFirst();
+                baseType = importedFqn.map(s -> (JmmType) JmmClassType.ofInstance(s, true))
+                        .orElseGet(() -> JmmClassType.ofInstance(name, false));
+            }
         } else {
-            // Fallback: first TYPE child
             baseType = convertType(array.getChildren(TYPE).getFirst());
+            // If it's already an array, unwrap to get base type
+            while (baseType instanceof JmmArrayType at) {
+                baseType = at.itemType();
+            }
         }
 
-        // Count dimensions: every non-SIMPLE_TYPE / non-TYPE child is a dimension bracket
+        // Count dimensions from non-type children
         long dimCount = array.getChildren().stream()
                 .filter(c -> !SIMPLE_TYPE.check(c) && !TYPE.check(c))
                 .count();
-
-        if (dimCount == 0) dimCount = 1; // safety
+        if (dimCount == 0) dimCount = 1;
 
         return JmmArrayType.of(baseType, (int) dimCount);
     }
@@ -251,6 +264,16 @@ public class TypeUtils {
             return getExprType(children.getFirst());
         }
 
+        // Handle new int[b][c][d] — NEW_ARRAY_EXPR followed by ARRAY_EXPR siblings
+        if (NEW_ARRAY_EXPR.check(children.get(0))) {
+            long extraDims = children.stream().skip(1).filter(c -> ARRAY_EXPR.check(c)).count();
+            JmmType baseArrayType = getExprType(children.get(0));
+            if (extraDims > 0 && baseArrayType instanceof JmmArrayType arrayType) {
+                return JmmArrayType.of(arrayType.itemType(), (int)(arrayType.dimension() + extraDims));
+            }
+            return baseArrayType;
+        }
+
         // Handle chains: base [op1] [op2] ...
         JmmType currentType = getExprType(children.get(0));
 
@@ -260,29 +283,27 @@ public class TypeUtils {
             if (OBJECT_CALL_EXPR.check(child)) {
                 currentType = getObjectCallType(children.get(0), child);
             } else if (ARRAY_EXPR.check(child)) {
-            JmmNode indexExpr = child.getChild(0);
-            JmmType indexType = getExprType(indexExpr);
-            if (!indexType.equals(intType())) {
-                throw new RuntimeException("Array index must be of type int, got: " + indexType);
-            }
-            if (currentType instanceof JmmArrayType arrayType) {
-                int remaining = arrayType.dimension() - 1;
-                currentType = remaining <= 0
-                        ? arrayType.itemType()
-                        : JmmArrayType.of(arrayType.itemType(), remaining);
-            } else {
-                return intType();
-            }
-        } else if (FIELD_ACCESS_EXPR.check(child)) {
+                JmmNode indexExpr = child.getChild(0);
+                JmmType indexType = getExprType(indexExpr);
+                if (!indexType.equals(intType())) {
+                    throw new RuntimeException("Array index must be of type int, got: " + indexType);
+                }
+                if (currentType instanceof JmmArrayType arrayType) {
+                    int remaining = arrayType.dimension() - 1;
+                    currentType = remaining <= 0
+                            ? arrayType.itemType()
+                            : JmmArrayType.of(arrayType.itemType(), remaining);
+                } else {
+                    return intType();
+                }
+            } else if (FIELD_ACCESS_EXPR.check(child)) {
                 String fieldName = child.get("name");
                 if ("length".equals(fieldName) && currentType.isArray()) {
                     currentType = intType();
                 } else if (currentType instanceof JmmClassType classType) {
                     boolean isImported = table.getImports().stream()
                             .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
-                    if (isImported) {
-                        // give benefit of the doubt
-                    } else {
+                    if (!isImported) {
                         throw new RuntimeException("Unsupported field access: " + fieldName + " on " + currentType);
                     }
                 } else {

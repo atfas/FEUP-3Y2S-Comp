@@ -35,6 +35,14 @@ public class UndeclaredVariable extends AnalysisVisitorWithTable{
         if (currentMethod.getLocalVariable(name).isPresent()) return null;
         if (table.getField(name).isPresent()) return null;
 
+        // Allow current class name used as static reference (e.g. N.zero())
+        if (name.equals(table.getClassName())) return null;
+
+        // Allow imported class names used as static references
+        boolean isImportedClass = table.getImports().stream()
+                .anyMatch(imp -> imp.equals(name) || imp.endsWith("." + name));
+        if (isImportedClass) return null;
+
         addReport(newError(varRefExpr,
                 String.format("Variable '%s' does not exist.", name)));
 

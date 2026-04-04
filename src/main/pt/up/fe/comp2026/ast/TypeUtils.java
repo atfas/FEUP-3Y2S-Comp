@@ -169,7 +169,19 @@ public class TypeUtils {
         var field = table.getField(name);
         if (field.isPresent()) return field.get().type();
 
-        // If not found → error (should not happen if previous pass works)
+        // Allow current class name used as static reference (e.g. N.zero())
+        if (name.equals(table.getClassName())) {
+            return JmmClassType.ofInstance(table.getFullyQualifiedName(), false);
+        }
+
+        // Allow imported class names used as static references
+        var importedFqn = table.getImports().stream()
+                .filter(imp -> imp.equals(name) || imp.endsWith("." + name))
+                .findFirst();
+        if (importedFqn.isPresent()) {
+            return JmmClassType.ofInstance(importedFqn.get(), true);
+        }
+
         throw new RuntimeException("Variable '" + name + "' not found in scope");
     }
 

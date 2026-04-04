@@ -167,10 +167,12 @@ public class TypeUtils {
     }
 
     private JmmType getArrayExprType(JmmNode array) {
-        var simpleTypeNodes = array.getChildren(SIMPLE_TYPE);
+        // Get base element type - look for SIMPLE_TYPE or ARRAY_TYPE child
         JmmType baseType;
+        var simpleTypeNodes = array.getChildren(SIMPLE_TYPE);
+        var arrayTypeNodes = array.getChildren(ARRAY_TYPE);
+
         if (!simpleTypeNodes.isEmpty()) {
-            // Get the primitive/class base type directly, not through convertType which adds array wrapping
             var typeNode = simpleTypeNodes.get(0);
             var name = typeNode.get("name");
             var primitiveType = JmmPrimitiveType.fromString(name);
@@ -185,21 +187,37 @@ public class TypeUtils {
                 baseType = importedFqn.map(s -> (JmmType) JmmClassType.ofInstance(s, true))
                         .orElseGet(() -> JmmClassType.ofInstance(name, false));
             }
-        } else {
-            baseType = convertType(array.getChildren(TYPE).getFirst());
-            // If it's already an array, unwrap to get base type
-            while (baseType instanceof JmmArrayType at) {
-                baseType = at.itemType();
+            // Count dims from SIMPLE_TYPE siblings + direct SIZED/UNSIZED_ARRAY_DIM children
+            long dimCount = array.getChildren().stream()
+                    .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                    .count();
+            if (dimCount == 0) dimCount = 1;
+            return JmmArrayType.of(baseType, (int) dimCount);
+
+        } else if (!arrayTypeNodes.isEmpty()) {
+            // ARRAY_TYPE child — base type is inside it, dims are split between it and NEW_ARRAY_EXPR
+            var arrayTypeNode = arrayTypeNodes.get(0);
+            var name = arrayTypeNode.get("name");
+            var primitiveType = JmmPrimitiveType.fromString(name);
+            if (primitiveType.isPresent()) {
+                baseType = primitiveType.get();
+            } else {
+                baseType = JmmClassType.ofInstance(name, false);
             }
+            // Count dims inside ARRAY_TYPE + dims directly on NEW_ARRAY_EXPR
+            long dimsInType = arrayTypeNode.getChildren().stream()
+                    .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                    .count();
+            long dimsInExpr = array.getChildren().stream()
+                    .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                    .count();
+            long totalDims = dimsInType + dimsInExpr;
+            if (totalDims == 0) totalDims = 1;
+            return JmmArrayType.of(baseType, (int) totalDims);
         }
 
-        // Count dimensions from non-type children
-        long dimCount = array.getChildren().stream()
-                .filter(c -> !SIMPLE_TYPE.check(c) && !TYPE.check(c))
-                .count();
-        if (dimCount == 0) dimCount = 1;
-
-        return JmmArrayType.of(baseType, (int) dimCount);
+        // Fallback
+        return JmmArrayType.of(intType());
     }
 
     private JmmType getArrayLiteralExprType(JmmNode arrayLiteral) {

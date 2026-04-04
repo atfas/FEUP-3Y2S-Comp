@@ -8,6 +8,7 @@ import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmPrimitiveType;
 import pt.up.fe.comp.jmm.ast.JmmNode;
 import pt.up.fe.comp2026.ast.TypeUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -27,45 +28,63 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
 
 
     private Void arraySizeChecks(JmmNode newArrayExpr, SymbolTable table) {
-        var children = newArrayExpr.getChildren();
+        // Collect all dims in order: first from ARRAY_TYPE child, then from NEW_ARRAY_EXPR directly
+        List<JmmNode> dims = new ArrayList<>();
 
+        var arrayTypeNodes = newArrayExpr.getChildren(ARRAY_TYPE);
+        if (!arrayTypeNodes.isEmpty()) {
+            arrayTypeNodes.get(0).getChildren().stream()
+                    .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                    .forEach(dims::add);
+        }
 
-        List<JmmNode> dims = children.stream()
-                .filter(c -> !SIMPLE_TYPE.check(c) && !TYPE.check(c))
-                .toList();
+        newArrayExpr.getChildren().stream()
+                .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                .forEach(dims::add);
 
-        if (dims.isEmpty()) return null; // 1-D handled elsewhere or no dims
+        // Also handle old-style SIMPLE_TYPE + PRIMARY_EXPR children
+        var simpleTypeNodes = newArrayExpr.getChildren(SIMPLE_TYPE);
+        if (!simpleTypeNodes.isEmpty() && dims.isEmpty()) {
+            // Old grammar style - just validate size is int
+            var sizeNodes = newArrayExpr.getChildren().stream()
+                    .filter(c -> !SIMPLE_TYPE.check(c))
+                    .toList();
+            for (var sizeExpr : sizeNodes) {
+                var sizeType = TypeUtils.with(table).getExprType(sizeExpr);
+                if (!sizeType.equals(TypeUtils.intType())) {
+                    addReport(newError(newArrayExpr, "Array size must be of type int, got: " + sizeType));
+                }
+            }
+            return null;
+        }
 
-        // Check: at least one sized dimension required
-        boolean firstHasSize = hasSize(dims.get(0));
-        if (!firstHasSize) {
+        if (dims.isEmpty()) return null;
+
+        // First dim must be sized
+        if (!SIZED_ARRAY_DIM.check(dims.get(0))) {
             addReport(newError(newArrayExpr,
                     "At least the first dimension of a new array expression must have a size"));
             return null;
         }
 
-        // Validate: no gap rule — once we see an empty dim, all subsequent must be empty
+        // No gap rule
         boolean seenEmpty = false;
         for (JmmNode dim : dims) {
-            boolean dimHasSize = hasSize(dim);
-            if (seenEmpty && dimHasSize) {
+            boolean sized = SIZED_ARRAY_DIM.check(dim);
+            if (seenEmpty && sized) {
                 addReport(newError(newArrayExpr,
-                        "Array dimensions cannot have sizes after an empty dimension (no gaps allowed)"));
+                        "Array dimensions cannot have sizes after an empty dimension"));
                 return null;
             }
-            if (!dimHasSize) {
-                seenEmpty = true;
-            }
+            if (!sized) seenEmpty = true;
         }
 
-        // Validate all provided sizes are int
+        // Validate all sized dims have int size
         for (JmmNode dim : dims) {
-            if (hasSize(dim) && dim.getNumChildren() > 0) {
-                var sizeExpr = dim.getChild(0);
-                var sizeType = TypeUtils.with(table).getExprType(sizeExpr);
+            if (SIZED_ARRAY_DIM.check(dim) && dim.getNumChildren() > 0) {
+                var sizeType = TypeUtils.with(table).getExprType(dim.getChild(0));
                 if (!sizeType.equals(TypeUtils.intType())) {
-                    addReport(newError(dim,
-                            "Array size must be of type int, got: " + sizeType));
+                    addReport(newError(dim, "Array size must be of type int, got: " + sizeType));
                 }
             }
         }
@@ -143,11 +162,25 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
         var children = postfixExpr.getChildren();
         if (children.size() <= 1) return null;
 
-        // Skip if this is a multi-dim array creation (new int[b][c][d])
-        if (NEW_ARRAY_EXPR.check(children.get(0))) return null;
+        // Handle multi-dim array creation: new int[b][c][d]
+        if (NEW_ARRAY_EXPR.check(children.get(0))) {
+            // Validate the extra dimension indices
+            for (int i = 1; i < children.size(); i++) {
+                var child = children.get(i);
+                if (ARRAY_EXPR.check(child)) {
+                    var indexExpr = child.getChild(0);
+                    var indexType = TypeUtils.with(table).getExprType(indexExpr);
+                    if (!indexType.equals(TypeUtils.intType())) {
+                        addReport(newError(indexExpr,
+                                "Array size must be of type int, got: " + indexType));
+                    }
+                }
+            }
+            return null;
+        }
 
+        // Normal array access checks
         var currentType = TypeUtils.with(table).getExprType(children.get(0));
-
         for (int i = 1; i < children.size(); i++) {
             var child = children.get(i);
             if (ARRAY_EXPR.check(child)) {
@@ -156,7 +189,6 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
                 if (!indexType.equals(TypeUtils.intType())) {
                     addReport(newError(indexExpr, "Array index must be of type int, got: " + indexType));
                 }
-
                 if (currentType instanceof JmmArrayType arrayType) {
                     int remaining = arrayType.dimension() - 1;
                     currentType = remaining <= 0

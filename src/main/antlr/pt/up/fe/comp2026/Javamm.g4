@@ -84,8 +84,11 @@ type
     ;
 
 arrayDim
-    : LSB RSB
+    : '[' expr ']'  #SizedArrayDim
+    | '[' ']'       #UnsizedArrayDim
     ;
+
+
 
 param
     : type name=ID
@@ -167,7 +170,7 @@ baseExpr
     | INTEGERDEF #IntegerLiteral
     | 'new' name=ID '(' exprList? ')' #NewObjectExpr
     | 'new' type '(' ')' #NewObjectExpr
-    | 'new' type '[' expr ']' #NewArrayExpr
+    | 'new' type arrayDim+ #NewArrayExpr
     | 'new' type '[' ']' '{' exprList? '}' #NewArrayLiteralExpr
     | name=ID '(' exprList? ')' #CallExpr
     | name=ID #VarRefExpr

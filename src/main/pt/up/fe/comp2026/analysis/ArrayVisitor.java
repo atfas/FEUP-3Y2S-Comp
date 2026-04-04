@@ -124,7 +124,12 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
             }
 
             if (currentType instanceof JmmArrayType arrayType) {
-                currentType = arrayType.itemType();
+                int remainingDims = arrayType.dimension() - 1;
+                if (remainingDims <= 0) {
+                    currentType = arrayType.itemType();          // fully dereferenced
+                } else {
+                    currentType = JmmArrayType.of(arrayType.itemType(), remainingDims);
+                }
             } else {
                 addReport(newError(varAssign, "Too many array indices for type " + currentType));
                 break;
@@ -148,7 +153,10 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
                 }
 
                 if (currentType instanceof JmmArrayType arrayType) {
-                    currentType = arrayType.itemType();
+                    int remaining = arrayType.dimension() - 1;
+                    currentType = remaining <= 0
+                            ? arrayType.itemType()
+                            : JmmArrayType.of(arrayType.itemType(), remaining);
                 } else {
                     addReport(newError(postfixExpr, "Array access must be done on an array"));
                     break;

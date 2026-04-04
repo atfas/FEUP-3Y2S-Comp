@@ -15,4 +15,6 @@ generated-src/
 output.ollir
 output.jasmin
 output.j
+.DS_Storept/
 .DS_Store
+**/.DS_Store

@@ -71,10 +71,11 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
             assignType = TypeUtils.with(table).getExprType(assign.getChild(assign.getNumChildren() - 1));
         }
 
-        if (assign.getNumChildren() > 1 && varType.isArray()) {
-            if (varType instanceof JmmArrayType arrayType) {
-                varType = arrayType.itemType();
-            }
+        if (assign.getNumChildren() > 1 && varType instanceof JmmArrayType arrayType) {
+            int remaining = arrayType.dimension() - 1;
+            varType = remaining <= 0
+                    ? arrayType.itemType()
+                    : JmmArrayType.of(arrayType.itemType(), remaining);
         }
 
         if (!isValidAssign(varType, assignType)){

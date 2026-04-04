@@ -57,15 +57,14 @@ public class TypeUtils {
         }
 
         if (ARRAY_TYPE.check(typeNode)) {
-            int colStart = Integer.parseInt(typeNode.get("colStart"));
-            int colEnd = Integer.parseInt(typeNode.get("colEnd"));
-            int spanLength = colEnd - colStart + 1;
-            int dims = (spanLength - name.length()) / 2;
+            // Count the arrayDim children (each "[]" is one child)
+            int dims = (int) typeNode.getChildren().stream()
+                    .filter(c -> "ArrayDim".equals(c.getKind()))
+                    .count();
             if (dims < 1) dims = 1;
 
-            for (int i = 0; i < dims; i++) {
-                type = JmmArrayType.of(type);
-            }
+            // Pass the final base type with the total dimension count
+            type = JmmArrayType.of(type, dims);   // one flat wrapper
         }
 
         return type;
@@ -187,13 +186,7 @@ public class TypeUtils {
 
         if (dimCount == 0) dimCount = 1; // safety
 
-        // Wrap baseType in dimCount layers of JmmArrayType
-        JmmType result = baseType;
-        for (long i = 0; i < dimCount; i++) {
-            result = JmmArrayType.of(result);
-        }
-
-        return result;
+        return JmmArrayType.of(baseType, (int) dimCount);
     }
 
     private JmmType getArrayLiteralExprType(JmmNode arrayLiteral) {
@@ -267,17 +260,20 @@ public class TypeUtils {
             if (OBJECT_CALL_EXPR.check(child)) {
                 currentType = getObjectCallType(children.get(0), child);
             } else if (ARRAY_EXPR.check(child)) {
-                JmmNode indexExpr = child.getChild(0);
-                JmmType indexType = getExprType(indexExpr);
-                if (!indexType.equals(intType())) {
-                    throw new RuntimeException("Array index must be of type int, got: " + indexType);
-                }
-                if (currentType instanceof JmmArrayType arrayType) {
-                    currentType = arrayType.itemType();
-                } else {
-                    return intType();
-                }
-            } else if (FIELD_ACCESS_EXPR.check(child)) {
+            JmmNode indexExpr = child.getChild(0);
+            JmmType indexType = getExprType(indexExpr);
+            if (!indexType.equals(intType())) {
+                throw new RuntimeException("Array index must be of type int, got: " + indexType);
+            }
+            if (currentType instanceof JmmArrayType arrayType) {
+                int remaining = arrayType.dimension() - 1;
+                currentType = remaining <= 0
+                        ? arrayType.itemType()
+                        : JmmArrayType.of(arrayType.itemType(), remaining);
+            } else {
+                return intType();
+            }
+        } else if (FIELD_ACCESS_EXPR.check(child)) {
                 String fieldName = child.get("name");
                 if ("length".equals(fieldName) && currentType.isArray()) {
                     currentType = intType();

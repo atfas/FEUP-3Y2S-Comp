@@ -107,6 +107,7 @@ public class TypeUtils {
             case PRIMARY_EXPR -> getExprType(expr.getChild(0));
             case POSTFIX_EXPR -> getPostFixExprType(expr);
             case NEW_ARRAY_EXPR -> getArrayExprType(expr);
+            case NEW_ARRAY_LITERAL_EXPR -> getArrayLiteralExprType(expr);
             case NEW_OBJECT_EXPR -> getNewObjectExprType(expr);
             case PAREN_EXPR -> getParenExpr(expr);
             case UNARY_EXPR -> intType();
@@ -203,6 +204,41 @@ public class TypeUtils {
         } catch (Exception e) {
             throw new RuntimeException("Cannot get element type from array type: " + baseType, e);
         }
+    }
+
+    private JmmType getArrayLiteralExprType(JmmNode arrayLiteral) {
+        var typeNode = arrayLiteral.getChildren(TYPE).getFirst();
+        var elementType = convertType(typeNode);
+        var exprLists = arrayLiteral.getChildren(EXPR_LIST);
+
+        if (!exprLists.isEmpty()) {
+            var exprList = exprLists.getFirst();
+            for (var child : exprList.getChildren()) {
+                var elementExprType = getExprType(child);
+                if (!isValidArrayElementType(elementType, elementExprType)) {
+                    throw new RuntimeException("Array initializer element type must match array element type: "
+                            + elementType + " != " + elementExprType);
+                }
+            }
+        }
+
+        return JmmArrayType.of(elementType);
+    }
+
+    private boolean isValidArrayElementType(JmmType targetType, JmmType exprType) {
+        if (targetType instanceof JmmPrimitiveType && exprType instanceof JmmPrimitiveType) {
+            return targetType.equals(exprType);
+        }
+
+        if (targetType instanceof JmmArrayType && exprType instanceof JmmArrayType) {
+            return targetType.equals(exprType);
+        }
+
+        if (targetType instanceof JmmClassType && exprType instanceof JmmClassType) {
+            return targetType.equals(exprType);
+        }
+
+        return false;
     }
 
     private JmmType getCallExprType(JmmNode callExpr) {

@@ -292,9 +292,9 @@ public class TypeUtils {
         // Lookup method by name + parameter types
         Signature signature = new Signature(methodName, argTypes);
 
-        var method = table.getMethod(signature);
+        var method = getMethodInHierarchy(signature);
 
-        // If found in local symbol table, return its return type
+        // If found in hierarchy, return its return type
         if (method.isPresent()) {
             return method.get().returnType();
         }
@@ -322,6 +322,42 @@ public class TypeUtils {
         }
 
         throw new RuntimeException("Method not found: " + signature);
+    }
+
+    private Optional<MethodSymbol> getMethodInHierarchy(Signature signature) {
+        // First check current table
+        var method = table.getMethod(signature);
+        if (method.isPresent()) {
+            return method;
+        }
+
+        // Check super class
+        String superName = table.getSuperFullyQualifiedName();
+        if (superName != null && !superName.isEmpty()) {
+            var superTableOpt = table.getImportedSymbolTable(superName);
+            if (superTableOpt.isPresent()) {
+                return getMethodInHierarchyRecursive(superTableOpt.get(), signature);
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private Optional<MethodSymbol> getMethodInHierarchyRecursive(SymbolTable currentTable, Signature signature) {
+        var method = currentTable.getMethod(signature);
+        if (method.isPresent()) {
+            return method;
+        }
+
+        String superName = currentTable.getSuperFullyQualifiedName();
+        if (superName != null && !superName.isEmpty() && currentTable instanceof JmmSymbolTable jmmTable) {
+            var superTableOpt = jmmTable.getImportedSymbolTable(superName);
+            if (superTableOpt.isPresent()) {
+                return getMethodInHierarchyRecursive(superTableOpt.get(), signature);
+            }
+        }
+
+        return Optional.empty();
     }
 
     private JmmType getNewObjectExprType(JmmNode object){

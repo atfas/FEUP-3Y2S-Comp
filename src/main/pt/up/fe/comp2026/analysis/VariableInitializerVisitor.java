@@ -64,14 +64,16 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
 
     private Void varAssign(JmmNode assign, SymbolTable table){
         var varType = TypeUtils.with(table).getVarType(assign.get("var"), currentMethod);
-        var assignType = TypeUtils.with(table).getExprType(assign.getChild(0));
 
-        // If this is an array element assignment (arr[i] = val), use element type
+        // If this is an array element assignment (arr[i] = val), the RHS is the last child.
+        var assignType = TypeUtils.with(table).getExprType(assign.getChild(0));
+        if (assign.getNumChildren() > 1) {
+            assignType = TypeUtils.with(table).getExprType(assign.getChild(assign.getNumChildren() - 1));
+        }
+
         if (assign.getNumChildren() > 1 && varType.isArray()) {
             if (varType instanceof JmmArrayType arrayType) {
                 varType = arrayType.itemType();
-                // The value being assigned is the last child
-                assignType = TypeUtils.with(table).getExprType(assign.getChild(assign.getNumChildren() - 1));
             }
         }
 

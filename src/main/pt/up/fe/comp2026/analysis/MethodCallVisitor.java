@@ -20,8 +20,8 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
     @Override
     protected void buildVisitor() {
         addVisit(OBJECT_CALL_EXPR, this::visitObjectCallExpr);
+        addVisit(CALL_EXPR, this::visitCallExpr);
     }
-
     private Void visitObjectCallExpr(JmmNode callNode, SymbolTable table) {
         var postfixExpr = callNode.getParent();
         var base = postfixExpr.getChild(0);
@@ -70,8 +70,11 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
                             var params = m.getParameterTypes();
                             if (params.length != argTypes.size()) return false;
                             for (int i = 0; i < params.length; i++) {
-                                String paramName = params[i].getSimpleName().toLowerCase(); // "int", "boolean"
-                                String argName = argTypes.get(i).toString().toLowerCase();  // "int", "boolean"
+                                String paramName = params[i].getSimpleName().toLowerCase();
+                                JmmType argType = argTypes.get(i);
+                                // If param is an array type, give benefit of the doubt
+                                if (params[i].isArray()) return true;
+                                String argName = argType.toString().toLowerCase();
                                 if (!paramName.equals(argName)) return false;
                             }
                             return true;
@@ -116,6 +119,29 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
         return null;
     }
 
+    private Void visitCallExpr(JmmNode callNode, SymbolTable table) {
+        String methodName = callNode.get("name");
+
+        // Collect argument types
+        List<JmmType> argTypes = new ArrayList<>();
+        for (var child : callNode.getChildren()) {
+            if (EXPR_LIST.check(child)) {
+                for (var arg : child.getChildren()) {
+                    argTypes.add(TypeUtils.with(table).getExprType(arg));
+                }
+            }
+        }
+
+        // Treat as implicit this call
+        SearchResult result = methodExistsInHierarchy(table, methodName);
+        if (result == SearchResult.NOT_FOUND) {
+            addReport(newError(callNode,
+                    "Cannot call method '" + methodName + "': not defined in class '"
+                            + table.getClassName() + "'"));
+        }
+
+        return null;
+    }
     private enum SearchResult { FOUND, NOT_FOUND, UNRESOLVABLE }
 
     private SearchResult methodExistsInHierarchy(SymbolTable currentTable, String methodName) {

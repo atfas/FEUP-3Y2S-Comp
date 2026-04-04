@@ -17,6 +17,7 @@ public class OperatorVisitor extends AnalysisVisitorWithTable {
     private static final Set<String> LOGIC_OPERATORS = Set.of("&&", "||");
     private static final Set<String> ARITHMETIC_OPERATORS = Set.of("+", "-", "*", "/");
     private static final Set<String> COMPARISON_OPERATORS = Set.of("<", ">");
+    private static final Set<String> EQUALITY_OPERATORS = Set.of("==", "!=");
 
     public OperatorVisitor(SymbolTable table) {
         super(table);
@@ -26,9 +27,18 @@ public class OperatorVisitor extends AnalysisVisitorWithTable {
     protected void buildVisitor() {
         addVisit(BINARY_EXPR, this::visitBinaryExpr);
         addVisit(UNARY_EXPR, this::visitUnaryExpr);
-        addVisit(NOT_EXPR, this::visitUnaryExpr);
+        addVisit(NOT_EXPR, this::visitNotExpr);
     }
+    private Void visitNotExpr(JmmNode exprNode, SymbolTable table) {
+        JmmType exprType = TypeUtils.with(table).getExprType(exprNode.getChild(0));
 
+        if (!exprType.equals(TypeUtils.boolType())) {
+            addReport(newError(exprNode,
+                    "Logical NOT operator requires a boolean operand"));
+        }
+
+        return null;
+    }
     private Void visitBinaryExpr(JmmNode exprNode, SymbolTable table) {
 
         JmmType leftType = TypeUtils.with(table).getExprType(exprNode.getChild(0));
@@ -59,16 +69,21 @@ public class OperatorVisitor extends AnalysisVisitorWithTable {
             }
         }
 
+        else if (EQUALITY_OPERATORS.contains(op)) {
+            if (!leftType.equals(rightType)) {
+                addReport(newError(exprNode,
+                        "Equality operators require operands of the same type"));
+            }
+        }
         return null;
     }
 
     private Void visitUnaryExpr(JmmNode exprNode, SymbolTable table) {
-
         JmmType exprType = TypeUtils.with(table).getExprType(exprNode.getChild(0));
 
-        if (!exprType.equals(TypeUtils.boolType())) {
+        if (!exprType.equals(TypeUtils.intType())) {
             addReport(newError(exprNode,
-                    "Logical NOT operator requires a boolean operand"));
+                    "Unary operator requires an integer operand"));
         }
 
         return null;

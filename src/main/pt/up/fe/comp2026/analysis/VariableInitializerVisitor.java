@@ -11,7 +11,7 @@ import pt.up.fe.comp.jmm.report.Report;
 import pt.up.fe.comp.jmm.report.Stage;
 import pt.up.fe.comp2026.ast.NodeUtils;
 import pt.up.fe.comp2026.ast.TypeUtils;
-
+import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmArrayType;
 import java.util.Optional;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -65,6 +65,15 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
     private Void varAssign(JmmNode assign, SymbolTable table){
         var varType = TypeUtils.with(table).getVarType(assign.get("var"), currentMethod);
         var assignType = TypeUtils.with(table).getExprType(assign.getChild(0));
+
+        // If this is an array element assignment (arr[i] = val), use element type
+        if (assign.getNumChildren() > 1 && varType.isArray()) {
+            if (varType instanceof JmmArrayType arrayType) {
+                varType = arrayType.itemType();
+                // The value being assigned is the last child
+                assignType = TypeUtils.with(table).getExprType(assign.getChild(assign.getNumChildren() - 1));
+            }
+        }
 
         if (!isValidAssign(varType, assignType)){
             addReport(newError(

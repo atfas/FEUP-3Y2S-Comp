@@ -109,6 +109,8 @@ public class TypeUtils {
             case NEW_ARRAY_EXPR -> getArrayExprType(expr);
             case NEW_OBJECT_EXPR -> getNewObjectExprType(expr);
             case PAREN_EXPR -> getParenExpr(expr);
+            case UNARY_EXPR -> intType();
+            case CALL_EXPR -> getCallExprType(expr);
             default ->
                     throw new UnsupportedOperationException("Can't compute type for expression kind '" + expr.getKind() + "'");
         };
@@ -203,31 +205,24 @@ public class TypeUtils {
         }
     }
 
-    private JmmType getFieldAccessType(JmmNode base, JmmNode fieldExpr) {
-        JmmType baseType = getExprType(base);
-        String fieldName = fieldExpr.get("name");
+    private JmmType getCallExprType(JmmNode callExpr) {
+        String methodName = callExpr.get("name");
+        List<JmmType> argTypes = new ArrayList<>();
 
-        // Special case for array.length
-        if (baseType instanceof JmmArrayType && "length".equals(fieldName)) {
-            return intType();
+        for (var child : callExpr.getChildren()) {
+            if (EXPR_LIST.check(child)) {
+                for (var arg : child.getChildren()) {
+                    argTypes.add(getExprType(arg));
+                }
+            }
         }
 
-        if (!(baseType instanceof JmmClassType classType)) {
-            throw new RuntimeException("Cannot access field '" + fieldName + "' on non-class type: " + baseType);
-        }
+        Signature signature = new Signature(methodName, argTypes);
+        var method = table.getMethod(signature);
+        if (method.isPresent()) return method.get().returnType();
 
-        // Try to find the field in the current class
-        var field = table.getField(fieldName);
-        if (field.isPresent()) {
-            return field.get().type();
-        }
-
-        // For imported classes, we give benefit of the doubt
-        if (classType.isImported()) {
-            return baseType; // Return the base type as a fallback
-        }
-
-        throw new RuntimeException("Field '" + fieldName + "' not found in class '" + classType.name() + "'");
+        // Method not found — return void as default
+        return JmmPrimitiveType.VOID;
     }
 
     private JmmType getPostFixExprType(JmmNode expr){
@@ -256,6 +251,24 @@ public class TypeUtils {
             return intType();
         }
 
+        if (children.size() == 2 && FIELD_ACCESS_EXPR.check(children.get(1))) {
+            String fieldName = children.get(1).get("name");
+            JmmType baseType = getExprType(children.get(0));
+
+            // array.length -> int
+            if ("length".equals(fieldName) && baseType.isArray()) {
+                return intType();
+            }
+
+            // For other field accesses on imported classes, give benefit of the doubt
+            if (baseType instanceof JmmClassType classType) {
+                boolean isImported = table.getImports().stream()
+                        .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
+                if (isImported) return baseType;
+            }
+
+            throw new RuntimeException("Unsupported field access: " + fieldName + " on " + baseType);
+        }
         throw new RuntimeException(
                 "Unsupported POSTFIX_EXPR structure with " + children.size() + " children: " + expr
         );
@@ -292,6 +305,18 @@ public class TypeUtils {
             boolean isImported = table.getImports().stream()
                     .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
             if (isImported) {
+                try {
+                    String fqn = table.getImports().stream()
+                            .filter(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()))
+                            .findFirst().orElse(classType.name());
+                    Class<?> clazz = Class.forName(fqn);
+                    var matchingMethods = java.util.Arrays.stream(clazz.getMethods())
+                            .filter(m -> m.getName().equals(methodName))
+                            .findFirst();
+                    if (matchingMethods.isPresent() && matchingMethods.get().getReturnType().isArray()) {
+                        return JmmArrayType.of(intType());
+                    }
+                } catch (ClassNotFoundException ignored) {}
                 return callerType;
             }
         }

@@ -27,6 +27,10 @@ public class ArrayVisitor extends AnalysisVisitorWithTable{
 
         var varType = TypeUtils.with(table).getVarType(varAssign.get("var"), method);
 
+        // Skip check if this is an array element assignment (arr[i] = ...)
+        // In that case the ASSIGN_STMT has more than 1 child (index + value)
+        if (varAssign.getNumChildren() > 1) return null;
+
         var assignType = TypeUtils.with(table).getExprType(varAssign.getChild(0));
 
         if (varType.isArray() && !assignType.isArray())
@@ -37,7 +41,7 @@ public class ArrayVisitor extends AnalysisVisitorWithTable{
         if (!varType.isArray() && assignType.isArray()){
             addReport(
                     newError(varAssign,
-                    "Array type cannot be assigned to a non array variable")
+                            "Array type cannot be assigned to a non array variable")
             );
         }
 

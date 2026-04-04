@@ -189,6 +189,47 @@ public class TypeUtils {
         return JmmArrayType.of(convertType(array.getChildren(SIMPLE_TYPE).getFirst()));
     }
 
+    private JmmType getArrayAccessType(JmmNode base, JmmNode arrayExpr) {
+        JmmType baseType = getExprType(base);
+        if (!(baseType instanceof JmmArrayType arrayType)) {
+            throw new RuntimeException("Cannot perform array access on non-array type: " + baseType);
+        }
+        // Assuming JmmArrayType has a method to get the element type
+        // Common methods: getElementType(), getType(), getComponentType()
+        try {
+            return (JmmType) arrayType.getClass().getMethod("getType").invoke(arrayType);
+        } catch (Exception e) {
+            throw new RuntimeException("Cannot get element type from array type: " + baseType, e);
+        }
+    }
+
+    private JmmType getFieldAccessType(JmmNode base, JmmNode fieldExpr) {
+        JmmType baseType = getExprType(base);
+        String fieldName = fieldExpr.get("name");
+
+        // Special case for array.length
+        if (baseType instanceof JmmArrayType && "length".equals(fieldName)) {
+            return intType();
+        }
+
+        if (!(baseType instanceof JmmClassType classType)) {
+            throw new RuntimeException("Cannot access field '" + fieldName + "' on non-class type: " + baseType);
+        }
+
+        // Try to find the field in the current class
+        var field = table.getField(fieldName);
+        if (field.isPresent()) {
+            return field.get().type();
+        }
+
+        // For imported classes, we give benefit of the doubt
+        if (classType.isImported()) {
+            return baseType; // Return the base type as a fallback
+        }
+
+        throw new RuntimeException("Field '" + fieldName + "' not found in class '" + classType.name() + "'");
+    }
+
     private JmmType getPostFixExprType(JmmNode expr){
         var children = expr.getChildren();
 
@@ -200,11 +241,25 @@ public class TypeUtils {
             return getObjectCallType(children.get(0), children.get(1));
         }
 
+        if (children.size() == 2 && ARRAY_EXPR.check(children.get(1))) {
+            // Validate array index must be int
+            JmmNode indexExpr = children.get(1).getChild(0);
+            JmmType indexType = getExprType(indexExpr);
+            if (!indexType.equals(intType())) {
+                throw new RuntimeException("Array index must be of type int, got: " + indexType);
+            }
+
+            JmmType baseType = getExprType(children.get(0));
+            if (baseType instanceof JmmArrayType arrayType) {
+                return arrayType.itemType();
+            }
+            return intType();
+        }
+
         throw new RuntimeException(
                 "Unsupported POSTFIX_EXPR structure with " + children.size() + " children: " + expr
         );
     }
-
     private JmmType getObjectCallType(JmmNode caller, JmmNode funcCall){
         String methodName = funcCall.get("name");
 

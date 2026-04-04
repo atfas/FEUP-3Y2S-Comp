@@ -3,11 +3,8 @@ package pt.up.fe.comp2026.analysis;
 import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
 import pt.up.fe.comp.jmm.analysis.table.type.JmmType;
 import pt.up.fe.comp.jmm.ast.JmmNode;
-import pt.up.fe.comp2026.ast.NodeUtils;
 import pt.up.fe.comp2026.ast.TypeUtils;
-import pt.up.fe.comp2026.jmm.ast.JmmAttributes;
 
-import java.util.HashSet;
 import java.util.Set;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -15,8 +12,8 @@ import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
 public class OperatorVisitor extends AnalysisVisitorWithTable {
 
     private static final Set<String> LOGIC_OPERATORS = Set.of("&&", "||");
-    private static final Set<String> ARITHMETIC_OPERATORS = Set.of("+", "-", "*", "/");
-    private static final Set<String> COMPARISON_OPERATORS = Set.of("<", ">");
+    private static final Set<String> ARITHMETIC_OPERATORS = Set.of("+", "-", "*", "/", "%");
+    private static final Set<String> COMPARISON_OPERATORS = Set.of("<", ">", "<=", ">=");
     private static final Set<String> EQUALITY_OPERATORS = Set.of("==", "!=");
 
     public OperatorVisitor(SymbolTable table) {
@@ -29,50 +26,35 @@ public class OperatorVisitor extends AnalysisVisitorWithTable {
         addVisit(UNARY_EXPR, this::visitUnaryExpr);
         addVisit(NOT_EXPR, this::visitNotExpr);
     }
+
     private Void visitNotExpr(JmmNode exprNode, SymbolTable table) {
         JmmType exprType = TypeUtils.with(table).getExprType(exprNode.getChild(0));
-
         if (!exprType.equals(TypeUtils.boolType())) {
-            addReport(newError(exprNode,
-                    "Logical NOT operator requires a boolean operand"));
+            addReport(newError(exprNode, "Logical NOT operator requires a boolean operand"));
         }
-
         return null;
     }
-    private Void visitBinaryExpr(JmmNode exprNode, SymbolTable table) {
 
+    private Void visitBinaryExpr(JmmNode exprNode, SymbolTable table) {
         JmmType leftType = TypeUtils.with(table).getExprType(exprNode.getChild(0));
         JmmType rightType = TypeUtils.with(table).getExprType(exprNode.getChild(1));
         String op = exprNode.get("op");
 
-        // Arithmetic operators: int op int -> int
         if (ARITHMETIC_OPERATORS.contains(op)) {
             if (!leftType.equals(TypeUtils.intType()) || !rightType.equals(TypeUtils.intType())) {
-                addReport(newError(exprNode,
-                        "Arithmetic operators require integer operands"));
+                addReport(newError(exprNode, "Arithmetic operators require integer operands"));
             }
-        }
-
-        // Logical operators: boolean op boolean -> boolean
-        else if (LOGIC_OPERATORS.contains(op)) {
+        } else if (LOGIC_OPERATORS.contains(op)) {
             if (!leftType.equals(TypeUtils.boolType()) || !rightType.equals(TypeUtils.boolType())) {
-                addReport(newError(exprNode,
-                        "Logical operators require boolean operands"));
+                addReport(newError(exprNode, "Logical operators require boolean operands"));
             }
-        }
-
-        // Comparison operators: int op int -> boolean
-        else if (COMPARISON_OPERATORS.contains(op)) {
+        } else if (COMPARISON_OPERATORS.contains(op)) {
             if (!leftType.equals(TypeUtils.intType()) || !rightType.equals(TypeUtils.intType())) {
-                addReport(newError(exprNode,
-                        "Comparison operators require integer operands"));
+                addReport(newError(exprNode, "Comparison operators require integer operands"));
             }
-        }
-
-        else if (EQUALITY_OPERATORS.contains(op)) {
+        } else if (EQUALITY_OPERATORS.contains(op)) {
             if (!leftType.equals(rightType)) {
-                addReport(newError(exprNode,
-                        "Equality operators require operands of the same type"));
+                addReport(newError(exprNode, "Equality operators require operands of the same type"));
             }
         }
         return null;
@@ -80,12 +62,9 @@ public class OperatorVisitor extends AnalysisVisitorWithTable {
 
     private Void visitUnaryExpr(JmmNode exprNode, SymbolTable table) {
         JmmType exprType = TypeUtils.with(table).getExprType(exprNode.getChild(0));
-
         if (!exprType.equals(TypeUtils.intType())) {
-            addReport(newError(exprNode,
-                    "Unary operator requires an integer operand"));
+            addReport(newError(exprNode, "Unary operator requires an integer operand"));
         }
-
         return null;
     }
 }

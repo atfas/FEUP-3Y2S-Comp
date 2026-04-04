@@ -1,6 +1,5 @@
 package pt.up.fe.comp2026.ast;
 
-import org.specs.comp.ollir.type.ClassType;
 import pt.up.fe.comp.jmm.analysis.table.MethodSymbol;
 import pt.up.fe.comp.jmm.analysis.table.Signature;
 import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
@@ -9,12 +8,7 @@ import pt.up.fe.comp.jmm.analysis.table.type.JmmType;
 import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmArrayType;
 import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmClassType;
 import pt.up.fe.comp.jmm.ast.JmmNode;
-import pt.up.fe.comp.jmm.ast.NodeAttribute;
-import pt.up.fe.comp2026.JavammParser;
-import pt.up.fe.comp2026.jmm.ast.JmmKind;
 import pt.up.fe.comp2026.symboltable.JmmSymbolTable;
-import pt.up.fe.specs.util.SpecsCheck;
-import pt.up.fe.specs.util.exceptions.NotImplementedException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,7 +21,6 @@ import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
  * Utility methods regarding types.
  */
 public class TypeUtils {
-
 
     private final JmmSymbolTable table;
 
@@ -52,13 +45,10 @@ public class TypeUtils {
 
         if (primitiveType.isPresent()) {
             type = primitiveType.get();
-
         } else if (name.equals(className)) {
             type = JmmClassType.ofInstance(fullyQualifiedName, false);
-
         } else {
             var importName = imports.stream().filter(i -> i.equals(name) || i.endsWith("." + name)).findFirst();
-
             if (importName.isPresent()) {
                 type = JmmClassType.ofInstance(importName.get(), true);
             } else {
@@ -90,12 +80,8 @@ public class TypeUtils {
         throw new RuntimeException("Undeclared variable: " + name);
     }
 
-
     /**
      * Gets the {@link JmmType} of an arbitrary expression.
-     *
-     * @param expr
-     * @return
      */
     public JmmType getExprType(JmmNode expr) {
         return switch (expr.getKind()) {
@@ -117,21 +103,17 @@ public class TypeUtils {
         };
     }
 
-    private JmmType getParenExpr(JmmNode parentExpr){
+    private JmmType getParenExpr(JmmNode parentExpr) {
         return getExprType(parentExpr.getChild(0));
     }
-
 
     public Signature getMethodDeclSignature(JmmNode methodDecl) {
         METHOD_DECL.check(methodDecl);
 
         var methodName = methodDecl.get("name");
-
         var params = new ArrayList<JmmType>();
 
-        // For every Param
         for (var param : methodDecl.getChildren(PARAM)) {
-            // Get the type from "Type PramName"
             var typeNode = param.getChild(0);
             params.add(convertType(typeNode));
         }
@@ -139,12 +121,8 @@ public class TypeUtils {
         return new Signature(methodName, params);
     }
 
-
     private JmmType getBinExprType(JmmNode binaryExpr) {
-
-        // Get operator
         String operator = binaryExpr.get("op");
-
         return switch (operator) {
             case "+", "*", "/", "%", "-" -> intType();
             case "&&", "||", "<", ">", "<=", ">=", "==", "!=" -> boolType();
@@ -160,24 +138,19 @@ public class TypeUtils {
         var signature = TypeUtils.with(table).getMethodDeclSignature(methodNode);
         var currentMethod = table.getMethod(signature).orElseThrow();
 
-        // Lookup variable in method parameters
         var param = currentMethod.getParameter(name);
         if (param.isPresent()) return param.get().type();
 
-        // Lookup variable in local variables
         var local = currentMethod.getLocalVariable(name);
         if (local.isPresent()) return local.get().type();
 
-        // Lookup variable in class fields
         var field = table.getField(name);
         if (field.isPresent()) return field.get().type();
 
-        // Allow current class name used as static reference (e.g. N.zero())
         if (name.equals(table.getClassName())) {
             return JmmClassType.ofInstance(table.getFullyQualifiedName(), false);
         }
 
-        // Allow imported class names used as static references
         var importedFqn = table.getImports().stream()
                 .filter(imp -> imp.equals(name) || imp.endsWith("." + name))
                 .findFirst();
@@ -188,22 +161,31 @@ public class TypeUtils {
         throw new RuntimeException("Variable '" + name + "' not found in scope");
     }
 
-    private JmmType getArrayExprType(JmmNode array){
-        return JmmArrayType.of(convertType(array.getChildren(SIMPLE_TYPE).getFirst()));
-    }
+    private JmmType getArrayExprType(JmmNode array) {
+        // Get base element type from SIMPLE_TYPE child
+        var simpleTypeNodes = array.getChildren(SIMPLE_TYPE);
+        JmmType baseType;
+        if (!simpleTypeNodes.isEmpty()) {
+            baseType = convertType(simpleTypeNodes.get(0));
+        } else {
+            // Fallback: first TYPE child
+            baseType = convertType(array.getChildren(TYPE).getFirst());
+        }
 
-    private JmmType getArrayAccessType(JmmNode base, JmmNode arrayExpr) {
-        JmmType baseType = getExprType(base);
-        if (!(baseType instanceof JmmArrayType arrayType)) {
-            throw new RuntimeException("Cannot perform array access on non-array type: " + baseType);
+        // Count dimensions: every non-SIMPLE_TYPE / non-TYPE child is a dimension bracket
+        long dimCount = array.getChildren().stream()
+                .filter(c -> !SIMPLE_TYPE.check(c) && !TYPE.check(c))
+                .count();
+
+        if (dimCount == 0) dimCount = 1; // safety
+
+        // Wrap baseType in dimCount layers of JmmArrayType
+        JmmType result = baseType;
+        for (long i = 0; i < dimCount; i++) {
+            result = JmmArrayType.of(result);
         }
-        // Assuming JmmArrayType has a method to get the element type
-        // Common methods: getElementType(), getType(), getComponentType()
-        try {
-            return (JmmType) arrayType.getClass().getMethod("getType").invoke(arrayType);
-        } catch (Exception e) {
-            throw new RuntimeException("Cannot get element type from array type: " + baseType, e);
-        }
+
+        return result;
     }
 
     private JmmType getArrayLiteralExprType(JmmNode arrayLiteral) {
@@ -229,20 +211,17 @@ public class TypeUtils {
         if (targetType instanceof JmmPrimitiveType && exprType instanceof JmmPrimitiveType) {
             return targetType.equals(exprType);
         }
-
         if (targetType instanceof JmmArrayType && exprType instanceof JmmArrayType) {
             return targetType.equals(exprType);
         }
-
         if (targetType instanceof JmmClassType && exprType instanceof JmmClassType) {
             return targetType.equals(exprType);
         }
-
         return false;
     }
 
     private JmmType getCallExprType(JmmNode callExpr) {
-        String methodName = callExpr.get("name");
+        String methodName = callExpr.get("value");
         List<JmmType> argTypes = new ArrayList<>();
 
         for (var child : callExpr.getChildren()) {
@@ -257,85 +236,79 @@ public class TypeUtils {
         var method = table.getMethod(signature);
         if (method.isPresent()) return method.get().returnType();
 
-        // Method not found — return void as default
+        // Check super hierarchy
+        var superMethod = getMethodInHierarchy(signature);
+        if (superMethod.isPresent()) return superMethod.get().returnType();
+
         return JmmPrimitiveType.VOID;
     }
 
-    private JmmType getPostFixExprType(JmmNode expr){
+    private JmmType getPostFixExprType(JmmNode expr) {
         var children = expr.getChildren();
 
         if (children.size() == 1) {
             return getExprType(children.getFirst());
         }
 
-        if (children.size() == 2 && OBJECT_CALL_EXPR.check(children.get(1))) {
-            return getObjectCallType(children.get(0), children.get(1));
+        // Handle chains: base [op1] [op2] ...
+        JmmType currentType = getExprType(children.get(0));
+
+        for (int i = 1; i < children.size(); i++) {
+            var child = children.get(i);
+
+            if (OBJECT_CALL_EXPR.check(child)) {
+                currentType = getObjectCallType(children.get(0), child);
+            } else if (ARRAY_EXPR.check(child)) {
+                JmmNode indexExpr = child.getChild(0);
+                JmmType indexType = getExprType(indexExpr);
+                if (!indexType.equals(intType())) {
+                    throw new RuntimeException("Array index must be of type int, got: " + indexType);
+                }
+                if (currentType instanceof JmmArrayType arrayType) {
+                    currentType = arrayType.itemType();
+                } else {
+                    return intType();
+                }
+            } else if (FIELD_ACCESS_EXPR.check(child)) {
+                String fieldName = child.get("name");
+                if ("length".equals(fieldName) && currentType.isArray()) {
+                    currentType = intType();
+                } else if (currentType instanceof JmmClassType classType) {
+                    boolean isImported = table.getImports().stream()
+                            .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
+                    if (isImported) {
+                        // give benefit of the doubt
+                    } else {
+                        throw new RuntimeException("Unsupported field access: " + fieldName + " on " + currentType);
+                    }
+                } else {
+                    throw new RuntimeException("Unsupported field access: " + fieldName + " on " + currentType);
+                }
+            }
         }
 
-        if (children.size() == 2 && ARRAY_EXPR.check(children.get(1))) {
-            // Validate array index must be int
-            JmmNode indexExpr = children.get(1).getChild(0);
-            JmmType indexType = getExprType(indexExpr);
-            if (!indexType.equals(intType())) {
-                throw new RuntimeException("Array index must be of type int, got: " + indexType);
-            }
-
-            JmmType baseType = getExprType(children.get(0));
-            if (baseType instanceof JmmArrayType arrayType) {
-                return arrayType.itemType();
-            }
-            return intType();
-        }
-
-        if (children.size() == 2 && FIELD_ACCESS_EXPR.check(children.get(1))) {
-            String fieldName = children.get(1).get("name");
-            JmmType baseType = getExprType(children.get(0));
-
-            // array.length -> int
-            if ("length".equals(fieldName) && baseType.isArray()) {
-                return intType();
-            }
-
-            // For other field accesses on imported classes, give benefit of the doubt
-            if (baseType instanceof JmmClassType classType) {
-                boolean isImported = table.getImports().stream()
-                        .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
-                if (isImported) return baseType;
-            }
-
-            throw new RuntimeException("Unsupported field access: " + fieldName + " on " + baseType);
-        }
-        throw new RuntimeException(
-                "Unsupported POSTFIX_EXPR structure with " + children.size() + " children: " + expr
-        );
+        return currentType;
     }
-    private JmmType getObjectCallType(JmmNode caller, JmmNode funcCall){
+
+    private JmmType getObjectCallType(JmmNode caller, JmmNode funcCall) {
         String methodName = funcCall.get("name");
 
-        // Extract argument types
         List<JmmType> argTypes = new ArrayList<>();
         Optional<JmmNode> exprListOpt = funcCall.getChildren().stream()
                 .filter(c -> c.getKind() == EXPR_LIST)
                 .findFirst();
 
         if (exprListOpt.isPresent()) {
-            JmmNode exprList = exprListOpt.get();
-            for (JmmNode arg : exprList.getChildren()) {
+            for (JmmNode arg : exprListOpt.get().getChildren()) {
                 argTypes.add(getExprType(arg));
             }
         }
 
-        // Lookup method by name + parameter types
         Signature signature = new Signature(methodName, argTypes);
-
         var method = getMethodInHierarchy(signature);
+        if (method.isPresent()) return method.get().returnType();
 
-        // If found in hierarchy, return its return type
-        if (method.isPresent()) {
-            return method.get().returnType();
-        }
-
-        // If not found, check if caller is an imported class — give benefit of the doubt
+        // Give benefit of the doubt for imported class calls
         JmmType callerType = getExprType(caller);
         if (callerType instanceof JmmClassType classType) {
             boolean isImported = table.getImports().stream()
@@ -346,10 +319,10 @@ public class TypeUtils {
                             .filter(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()))
                             .findFirst().orElse(classType.name());
                     Class<?> clazz = Class.forName(fqn);
-                    var matchingMethods = java.util.Arrays.stream(clazz.getMethods())
+                    var matchingMethod = java.util.Arrays.stream(clazz.getMethods())
                             .filter(m -> m.getName().equals(methodName))
                             .findFirst();
-                    if (matchingMethods.isPresent() && matchingMethods.get().getReturnType().isArray()) {
+                    if (matchingMethod.isPresent() && matchingMethod.get().getReturnType().isArray()) {
                         return JmmArrayType.of(intType());
                     }
                 } catch (ClassNotFoundException ignored) {}
@@ -361,13 +334,9 @@ public class TypeUtils {
     }
 
     private Optional<MethodSymbol> getMethodInHierarchy(Signature signature) {
-        // First check current table
         var method = table.getMethod(signature);
-        if (method.isPresent()) {
-            return method;
-        }
+        if (method.isPresent()) return method;
 
-        // Check super class
         String superName = table.getSuperFullyQualifiedName();
         if (superName != null && !superName.isEmpty()) {
             var superTableOpt = table.getImportedSymbolTable(superName);
@@ -381,9 +350,7 @@ public class TypeUtils {
 
     private Optional<MethodSymbol> getMethodInHierarchyRecursive(SymbolTable currentTable, Signature signature) {
         var method = currentTable.getMethod(signature);
-        if (method.isPresent()) {
-            return method;
-        }
+        if (method.isPresent()) return method;
 
         String superName = currentTable.getSuperFullyQualifiedName();
         if (superName != null && !superName.isEmpty() && currentTable instanceof JmmSymbolTable jmmTable) {
@@ -396,10 +363,10 @@ public class TypeUtils {
         return Optional.empty();
     }
 
-    private JmmType getNewObjectExprType(JmmNode object){
+    private JmmType getNewObjectExprType(JmmNode object) {
         if (object.getChildren(SIMPLE_TYPE).isEmpty()) {
             return convertType(object);
-        }else{
+        } else {
             return convertType(object.getChildren(SIMPLE_TYPE).getFirst());
         }
     }

@@ -2,6 +2,7 @@ package pt.up.fe.comp2026.optimization;
 
 import pt.up.fe.comp.jmm.analysis.JmmSemanticsResult;
 import pt.up.fe.comp.jmm.ast.JmmNode;
+import pt.up.fe.comp.jmm.ast.PostorderJmmVisitor;
 import pt.up.fe.comp.jmm.ollir.JmmOptimization;
 import pt.up.fe.comp.jmm.ollir.OllirResult;
 
@@ -27,9 +28,10 @@ public class JmmOptimizationImpl implements JmmOptimization {
     @Override
     public JmmSemanticsResult optimize(JmmSemanticsResult semanticsResult) {
 
-        //TODO: Do your AST-based optimizations here
+        // Create a postorder visitor and visit the root
         JmmNode root = semanticsResult.getRootNode();
-        NodeOptimization.optimize(root);
+        NodeOptimizationVisitor visitor = new NodeOptimizationVisitor();
+        visitor.visit(root, semanticsResult.getSymbolTable());
         return semanticsResult;
     }
 

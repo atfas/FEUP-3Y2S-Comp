@@ -1,35 +1,121 @@
 package pt.up.fe.comp2026.optimization;
 
+import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
 import pt.up.fe.comp.jmm.ast.JmmNode;
 import pt.up.fe.comp.jmm.ast.JmmNodeImpl;
 import pt.up.fe.comp.jmm.ast.Kind;
+import pt.up.fe.comp.jmm.ast.PostorderJmmVisitor;
 
 import java.util.Set;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
 
-public class NodeOptimization {
+public class NodeOptimizationVisitor extends PostorderJmmVisitor<SymbolTable, Void> {
     private static final Set<Kind> literals = Set.of(TRUE_LITERAL, FALSE_LITERAL, INTEGER_LITERAL);
 
-    public static void optimize(JmmNode root){
-        // Optimize child nodes
-        for (JmmNode node: root.getChildren())
-            optimize(node);
+    @Override
+    protected void buildVisitor() {
+        addVisit(FULL_ASSIGN_STMT, this::uselessNodeVisit);
+        addVisit(FULL_RETURN_STMT, this::uselessNodeVisit);
+        addVisit(PAREN_EXPR, this::uselessNodeVisit);
 
-        // Optimize current node
-        // Since children are already optimized this becomes more trivial
-        optimizeBinaryOperatorNode(root);
-        optimizeUselessNode(root);
+        addVisit(BINARY_EXPR, this::binaryExprVisit);
+
+        addVisit(UNARY_EXPR, this::unaryExprVisit);
+        addVisit(NOT_EXPR, this::notVisit);
     }
 
-    private static void optimizeBinaryOperatorNode(JmmNode node) {
-        if (!node.getKind().equals(BINARY_EXPR)) return;
+    private Void notVisit(JmmNode node, SymbolTable table) {
+        var child = node.getChild(0);
 
+        // Only fold if it's a boolean literal
+        if (!(child.getKind() == TRUE_LITERAL || child.getKind() == FALSE_LITERAL))
+            return null;
+
+        boolean value = child.getKind() == TRUE_LITERAL;
+        boolean result = !value;
+
+        Kind newKind = result ? TRUE_LITERAL : FALSE_LITERAL;
+
+        JmmNode newNode = new JmmNodeImpl(newKind);
+        newNode.put("value", Boolean.toString(result));
+
+        node.replace(newNode);
+
+        return null;
+    }
+
+
+
+    private Void unaryExprVisit(JmmNode node, SymbolTable table) {
+        var child = node.getChild(0);
+        if (!(literals.contains(child.getKind()))) return null;
+
+        var op = node.get("op");
+
+        Kind newKind;
+        String value;
+
+        switch (op){
+            case "+": {
+                // Unary plus does nothing
+                newKind = INTEGER_LITERAL;
+                value = child.get("value");
+                break;
+            }
+
+            case "-": {
+                int v = Integer.parseInt(child.get("value"));
+                int res = -v;
+
+                newKind = INTEGER_LITERAL;
+                value = Integer.toString(res);
+                break;
+            }
+
+            case "++": {
+                int v = Integer.parseInt(child.get("value"));
+                int res = v + 1;
+
+                newKind = INTEGER_LITERAL;
+                value = Integer.toString(res);
+                break;
+            }
+
+            case "--": {
+                int v = Integer.parseInt(child.get("value"));
+                int res = v - 1;
+
+                newKind = INTEGER_LITERAL;
+                value = Integer.toString(res);
+                break;
+            }
+
+            case "!": {
+                boolean v = child.getKind() == TRUE_LITERAL;
+                boolean res = !v;
+
+                newKind = res ? TRUE_LITERAL : FALSE_LITERAL;
+                value = Boolean.toString(res);
+                break;
+            }
+            default:
+                throw new RuntimeException("Operator not supported: " + op);
+        }
+
+        JmmNode newNode = new JmmNodeImpl(newKind);
+        newNode.put("value", value);
+
+        node.replace(newNode);
+        return null;
+    }
+
+    private Void binaryExprVisit(JmmNode node, SymbolTable table) {
         var left = node.getChild(0);
         var right = node.getChild(1);
 
         if (!(literals.contains(left.getKind()) && literals.contains(right.getKind())))
-            return;
+            return null;
 
         var op = node.get("op");
 
@@ -46,7 +132,7 @@ public class NodeOptimization {
                 int a = Integer.parseInt(left.get("value"));
                 int b = Integer.parseInt(right.get("value"));
 
-                if ((op.equals("/") || op.equals("%")) && b == 0) return;
+                if ((op.equals("/") || op.equals("%")) && b == 0) return null;
 
                 int res = switch (op) {
                     case "+" -> a + b;
@@ -129,14 +215,12 @@ public class NodeOptimization {
         newNode.put("value", value);
 
         node.replace(newNode);
+        return null;
     }
 
-    private static void optimizeUselessNode(JmmNode node){
-        if (!isUselessNode(node)) return;
-
+    private Void uselessNodeVisit(JmmNode node, SymbolTable table) {
         // Remove Current node but keep the children
         var parent = node.getParent();
-        if (parent == null) return;
 
         // Find index of the node in the parent
         int index = parent.getChildren().indexOf(node);
@@ -151,10 +235,6 @@ public class NodeOptimization {
         for (int i = 0; i < children.size(); i++) {
             parent.add(children.get(i), index + i);
         }
-    }
-
-    private static boolean isUselessNode(JmmNode node){
-        if (node.getKind().equals(FULL_RETURN_STMT)) return true;
-        return node.getKind().equals(FULL_ASSIGN_STMT);
+        return null;
     }
 }

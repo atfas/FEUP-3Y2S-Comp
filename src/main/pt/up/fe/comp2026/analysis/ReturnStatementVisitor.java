@@ -46,17 +46,38 @@ public class ReturnStatementVisitor extends AnalysisVisitorWithTable{
         return null;
     }
 
-    private Void visitReturn(JmmNode returnNode, SymbolTable table){
-        var expr = returnNode.getChild(0);
 
+    private Void visitReturn(JmmNode returnNode, SymbolTable table) {
+
+        boolean isVoidMethod =
+                currentMethod.returnType().equals(JmmPrimitiveType.VOID);
+
+        // Case 1: return;
+        if (returnNode.getNumChildren() == 0) {
+            if (!isVoidMethod) {
+                addReport(newError(returnNode,
+                        "Non-void method must return a value"));
+            }
+            return null;
+        }
+
+        // Case 2: return <expr>;
+        var expr = returnNode.getChild(0);
         var exprType = TypeUtils.with(table).getExprType(expr);
         var returnType = currentMethod.returnType();
 
-        if (exprType.equals(returnType)) return null;
+        if (isVoidMethod) {
+            addReport(newError(returnNode,
+                    "Void method cannot return a value"));
+            return null;
+        }
 
-        addReport(newError(returnNode,
-                String.format("Return type mismatch: expected '%s' but got '%s'",
-                        returnType, exprType)));
+        if (!exprType.equals(returnType)) {
+            addReport(newError(returnNode,
+                    String.format(
+                            "Return type mismatch: expected '%s' but got '%s'",
+                            returnType, exprType)));
+        }
 
         return null;
     }

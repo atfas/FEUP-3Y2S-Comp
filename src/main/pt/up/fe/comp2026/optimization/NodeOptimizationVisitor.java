@@ -15,6 +15,8 @@ public class NodeOptimizationVisitor extends PostorderJmmVisitor<SymbolTable, Vo
 
     @Override
     protected void buildVisitor() {
+        setDefaultVisit(this::defaultVisit);
+
         addVisit(FULL_ASSIGN_STMT, this::uselessNodeVisit);
         addVisit(FULL_RETURN_STMT, this::uselessNodeVisit);
         addVisit(PAREN_EXPR, this::uselessNodeVisit);
@@ -23,6 +25,10 @@ public class NodeOptimizationVisitor extends PostorderJmmVisitor<SymbolTable, Vo
 
         addVisit(UNARY_EXPR, this::unaryExprVisit);
         addVisit(NOT_EXPR, this::notVisit);
+    }
+
+    private Void defaultVisit(JmmNode node, SymbolTable table) {
+        return null;
     }
 
     private Void notVisit(JmmNode node, SymbolTable table) {
@@ -219,22 +225,15 @@ public class NodeOptimizationVisitor extends PostorderJmmVisitor<SymbolTable, Vo
     }
 
     private Void uselessNodeVisit(JmmNode node, SymbolTable table) {
-        // Remove Current node but keep the children
-        var parent = node.getParent();
-
-        // Find index of the node in the parent
-        int index = parent.getChildren().indexOf(node);
-
-        // Copy children (important to avoid concurrent modification)
-        var children = node.getChildren();
-
-        // Remove the node
-        node.delete();
-
-        // Insert children in the same position
-        for (int i = 0; i < children.size(); i++) {
-            parent.add(children.get(i), index + i);
+        if (node.getNumChildren() != 1) {
+            throw new RuntimeException(
+                    "Expected wrapper node with exactly one child: " + node.getKind()
+            );
         }
+
+        JmmNode child = node.getChild(0);
+        node.replace(child);
+
         return null;
     }
 }

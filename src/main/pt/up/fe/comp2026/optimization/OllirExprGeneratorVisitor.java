@@ -40,6 +40,12 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(VAR_REF_EXPR, this::visitVarRef);
         addVisit(BINARY_EXPR, this::visitBinExpr);
         addVisit(INTEGER_LITERAL, this::visitInteger);
+        addVisit(PRIMARY_EXPR, this::defaultVisitExpr);
+        addVisit(POSTFIX_EXPR, this::defaultVisitExpr);
+    }
+
+    private OllirExprResult defaultVisitExpr(JmmNode node, Void unused) {
+        return visit(node.getChild(0));
     }
 
     private OllirExprResult visitInteger(JmmNode node, Void unused) {

@@ -61,7 +61,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         addVisit(METHOD_DECL, this::visitMethodDecl);
         addVisit(RETURN_STMT, this::visitReturn);
         addVisit(ASSIGN_STMT, this::visitAssignStmt);
-//        setDefaultVisit(this::defaultVisit);
+        setDefaultVisit(this::defaultVisit);
     }
 
 
@@ -114,20 +114,29 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
     private String visitReturn(JmmNode node, Void unused) {
 
-        System.out.println("[TODO] OllirGeneratorVisitor.visitReturn(): Assuming always returns an integer expression, needs to be expanded");
-        JmmType retType = TypeUtils.intType();
-        var expr = exprVisitor.visit(node.getChild(0));
-
-
         StringBuilder code = new StringBuilder();
 
+        // Case 1: return; (void)
+        if (node.getNumChildren() == 0) {
+            code.append("ret.V");
+            code.append(END_STMT);
+            return code.toString();
+        }
+
+        // Case 2: return <expr>;
+        JmmNode exprNode = node.getChild(0);
+
+        JmmType retType = TypeUtils.with(table).getExprType(exprNode);
+        var expr = exprVisitor.visit(exprNode);
+
+        // Emit expression computation (temporaries, calls, etc.)
         code.append(expr.getComputation());
+
+        // ret.<type> <value>;
         code.append("ret");
         code.append(ollirTypes.toOllirType(retType));
         code.append(SPACE);
-
         code.append(expr.getCode());
-
         code.append(END_STMT);
 
         return code.toString();
@@ -135,7 +144,9 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
     private String visitMethodDecl(JmmNode node, Void unused) {
 
-        currentMethod = table.getMethod(TypeUtils.with(table).getMethodDeclSignature(node)).orElseThrow();
+        currentMethod = table
+                .getMethod(TypeUtils.with(table).getMethodDeclSignature(node))
+                .orElseThrow();
 
         StringBuilder code = new StringBuilder(".method ");
 
@@ -153,28 +164,33 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         var name = ollirTypes.sanitizeId(node.get("name"));
         code.append(name);
 
-        // params
-        // TODO: Hardcoded for a single parameter, needs to be expanded
-        var paramsCode = visit(node.getChild(1));
-        code.append("(" + paramsCode + ")");
+        // ✅ params — none for now (DO NOT visit SIMPLE_TYPE)
+        code.append("()");
 
-        // type
-        var retType = ollirTypes.toOllirType(currentMethod.returnType());//table.getReturnType(node.get("name")));
-        code.append(retType);
+        // return type
+        if (currentMethod.returnType().equals(JmmPrimitiveType.VOID)) {
+            code.append(".V");
+        } else {
+            code.append(ollirTypes.toOllirType(currentMethod.returnType()));
+        }
+
         code.append(L_BRACKET);
 
-        var stmts = node.getChildren(STMT);
-        if (!stmts.isEmpty()) {
-            // rest of its children stmts
-            var stmtsCode = stmts.stream().map(this::visit).collect(Collectors.joining("\n   ", "   ", ""));
-            code.append(stmtsCode);
+        for (var child : node.getChildren()) {
+            switch (child.getKind()) {
+                case VISIBILITY_DECLARATION:
+                case SIMPLE_TYPE:
+                    // metadata → ignore
+                    break;
+                default:
+                    code.append("   ").append(visit(child));
+            }
         }
 
         code.append(R_BRACKET);
         code.append(NL);
 
         currentMethod = null;
-
         return code.toString();
     }
 
@@ -228,11 +244,12 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
      * @return
      */
     private String defaultVisit(JmmNode node, Void unused) {
+        StringBuilder code = new StringBuilder();
 
         for (var child : node.getChildren()) {
-            visit(child);
+            code.append(visit(child));
         }
 
-        return "";
+        return code.toString();
     }
 }

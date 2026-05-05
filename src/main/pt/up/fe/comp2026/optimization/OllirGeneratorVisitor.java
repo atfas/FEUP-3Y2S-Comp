@@ -69,9 +69,17 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         return varDecl.get("name") + ollirTypes.toOllirType(varDecl.getObject("typeNode", JmmNode.class)) + ";";
     }
 
-    private String visitParam(JmmNode varDecl, Void unused) {
-        return varDecl.get("name") + ollirTypes.toOllirType(varDecl.getObject("typeNode", JmmNode.class));
+
+    private String visitParam(JmmNode param, Void unused) {
+
+        String name = ollirTypes.sanitizeId(param.get("name"));
+
+        // Get parameter type from symbol table
+        var type = currentMethod.getParameter(param.get("name")).orElseThrow().type();
+
+        return name + ollirTypes.toOllirType(type);
     }
+
 
 
 
@@ -144,9 +152,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
     private String visitMethodDecl(JmmNode node, Void unused) {
 
-        currentMethod = table
-                .getMethod(TypeUtils.with(table).getMethodDeclSignature(node))
-                .orElseThrow();
+        currentMethod = table.getMethod(TypeUtils.with(table).getMethodDeclSignature(node)).orElseThrow();
 
         StringBuilder code = new StringBuilder(".method ");
 
@@ -164,33 +170,35 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         var name = ollirTypes.sanitizeId(node.get("name"));
         code.append(name);
 
-        // ✅ params — none for now (DO NOT visit SIMPLE_TYPE)
-        code.append("()");
+        // params
 
-        // return type
-        if (currentMethod.returnType().equals(JmmPrimitiveType.VOID)) {
-            code.append(".V");
-        } else {
-            code.append(ollirTypes.toOllirType(currentMethod.returnType()));
-        }
+        String paramsCode = currentMethod.parameters().stream()
+                .map(p -> ollirTypes.sanitizeId(p.name())
+                        + ollirTypes.toOllirType(p.type()))
+                .collect(Collectors.joining(", "));
 
+
+        code.append("(");
+        code.append(paramsCode);
+        code.append(")");
+
+        // type
+        var retType = ollirTypes.toOllirType(currentMethod.returnType());//table.getReturnType(node.get("name")));
+        code.append(retType);
         code.append(L_BRACKET);
 
-        for (var child : node.getChildren()) {
-            switch (child.getKind()) {
-                case VISIBILITY_DECLARATION:
-                case SIMPLE_TYPE:
-                    // metadata → ignore
-                    break;
-                default:
-                    code.append("   ").append(visit(child));
-            }
+        var stmts = node.getChildren(STMT);
+        if (!stmts.isEmpty()) {
+            // rest of its children stmts
+            var stmtsCode = stmts.stream().map(this::visit).collect(Collectors.joining("\n   ", "   ", ""));
+            code.append(stmtsCode);
         }
 
         code.append(R_BRACKET);
         code.append(NL);
 
         currentMethod = null;
+
         return code.toString();
     }
 

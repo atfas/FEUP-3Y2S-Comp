@@ -59,12 +59,30 @@ public class OptUtils {
     }
 
     public String toOllirType(JmmType type) {
-            return "." + toPrimitiveOllirType((JmmPrimitiveType) type);
+
+        // Array types: .array.<base-type>
+        if (type.isArray()) {
+            return ".array" + toOllirType(type.asArray().itemType());
+        }
+
+        // Primitive types
+        if (type.isPrimitive()) {
+            return toPrimitiveOllirType(type.asPrimitive());
+        }
+
+        // Class / object types
+        return "." + type.asClass().name();
     }
 
+
     private String toPrimitiveOllirType(JmmPrimitiveType type) {
-        System.out.println("[TODO] OptUtils.toPrimitiveOllirType(): Assumes it is always int, needs to be expanded");
-        return "i32";
+        return switch (type.name()) {
+            case "INT" -> ".i32";
+            case "BOOLEAN" -> ".bool";
+            case "VOID" -> ".V";
+            default -> throw new RuntimeException(
+                    "Unsupported primitive type: " + type.name());
+        };
     }
 
     public String sanitizeId(String id) {

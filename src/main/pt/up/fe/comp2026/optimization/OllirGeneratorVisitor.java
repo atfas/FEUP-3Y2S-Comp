@@ -1,5 +1,6 @@
 package pt.up.fe.comp2026.optimization;
 
+import org.antlr.v4.codegen.SourceGenTriggers;
 import org.specs.comp.ollir.Ollir;
 import org.stringtemplate.v4.ST;
 import pt.up.fe.comp.jmm.analysis.table.MethodSymbol;
@@ -16,6 +17,7 @@ import pt.up.fe.comp2026.ast.TypeUtils;
 import pt.up.fe.comp2026.jmm.ast.JmmAttributes;
 import pt.up.fe.specs.util.utilities.StringLines;
 
+import java.sql.Struct;
 import java.util.stream.Collectors;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -66,6 +68,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         addVisit(ASSIGN_STMT, this::visitAssignStmt);
         addVisit(IF_STMT, this::visitIfStmt);
         addVisit(WHILE_STMT, this::visitWhileStmt);
+        addVisit(DO_STMT, this::visitDoStmt);
         setDefaultVisit(this::defaultVisit);
     }
 
@@ -163,6 +166,41 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         // Jump back to condition
         code.append("goto ")
                 .append(condLabel)
+                .append(END_STMT);
+
+        // End label
+        code.append(endLabel)
+                .append(":\n");
+
+        return code.toString();
+    }
+
+    private String visitDoStmt(JmmNode node, Void unused) {
+        StringBuilder code = new StringBuilder();
+
+        var children = node.getChildren();
+
+        var bodyNode = children.get(0);
+        var condNode = children.get(1);
+        var cond = exprVisitor.visit(condNode);
+
+        String bodyLabel = ollirTypes.nextTemp("DO_BODY");
+        String endLabel = ollirTypes.nextTemp("DO_END");
+
+        code.append(bodyLabel)
+                .append(":\n");
+
+        // Loop body
+        code.append(indent(visit(bodyNode)));
+
+        // Evaluate condition
+        code.append(cond.getComputation());
+
+        // Conditional jump
+        code.append("if (")
+                .append(cond.getCode())
+                .append(") goto ")
+                .append(bodyLabel)
                 .append(END_STMT);
 
         // End label

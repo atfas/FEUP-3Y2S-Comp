@@ -69,6 +69,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         addVisit(IF_STMT, this::visitIfStmt);
         addVisit(WHILE_STMT, this::visitWhileStmt);
         addVisit(DO_STMT, this::visitDoStmt);
+        addVisit(FOR_STMT, this::visitForStmt);
         setDefaultVisit(this::defaultVisit);
     }
 
@@ -201,6 +202,68 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
                 .append(cond.getCode())
                 .append(") goto ")
                 .append(bodyLabel)
+                .append(END_STMT);
+
+        // End label
+        code.append(endLabel)
+                .append(":\n");
+
+        return code.toString();
+    }
+
+    private String visitForStmt(JmmNode node, Void unused) {
+        StringBuilder code = new StringBuilder();
+
+        var children = node.getChildren();
+
+        var initNode = children.get(0);
+        var condNode = children.get(1);
+        var updateNode = children.get(2);
+        var bodyNode = children.get(3);
+
+        var cond = exprVisitor.visit(condNode);
+
+        String condLabel = ollirTypes.nextTemp("FOR_COND");
+        String bodyLabel = ollirTypes.nextTemp("FOR_BODY");
+        String updateLabel = ollirTypes.nextTemp("FOR_UPDATE");
+        String endLabel = ollirTypes.nextTemp("FOR_END");
+
+        // Initialization
+        code.append(indent(visit(initNode)));
+
+        code.append(condLabel)
+                .append(":\n");
+
+        // Evaluate condition
+        code.append(cond.getComputation());
+
+        // Conditional jump
+        code.append("if (")
+                .append(cond.getCode())
+                .append(") goto ")
+                .append(bodyLabel)
+                .append(END_STMT);
+
+        // Jump to end
+        code.append("goto ")
+                .append(endLabel)
+                .append(END_STMT);
+
+        code.append(bodyLabel)
+                .append(":\n");
+
+        // Loop body
+        code.append(indent(visit(bodyNode)));
+
+        code.append(updateLabel)
+                .append(":\n");
+
+        // Update
+        code.append(indent(visit(updateNode)));
+
+        // Jump back to condition
+        code.append("goto ")
+                .append(condLabel)
                 .append(END_STMT);
 
         // End label

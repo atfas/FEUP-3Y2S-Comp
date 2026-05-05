@@ -187,13 +187,19 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         code.append(retType);
         code.append(L_BRACKET);
 
-        var stmts = node.getChildren(STMT);
-        if (!stmts.isEmpty()) {
-            // rest of its children stmts
-            var stmtsCode = stmts.stream().map(this::visit).collect(Collectors.joining("\n   ", "   ", ""));
-            code.append(stmtsCode);
+        var stmt = node.getChildren().getLast();
+        switch (stmt.getKind()){
+            case STMT:
+            case RETURN_STMT:
+            case ASSIGN_STMT:
+                var stmtsCode = visit(stmt);
+                code.append(stmtsCode);
+                break;
+            default:
+                break;
         }
-
+        
+        code.append(NL);
         code.append(R_BRACKET);
         code.append(NL);
 

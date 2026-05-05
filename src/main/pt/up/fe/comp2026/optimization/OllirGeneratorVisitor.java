@@ -26,6 +26,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
     private static final String SPACE = " ";
     private static final String ASSIGN = ":=";
     private final String END_STMT = ";\n";
+    private final String END_LABEL = ":\n";
     private final String NL = "\n";
     private final String L_BRACKET = " {\n";
     private final String R_BRACKET = "}\n";
@@ -56,17 +57,79 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         addVisit(PROGRAM, this::visitProgram);
         addVisit(PACKAGE_DECL, this::visitPackageDecl);
         addVisit(CLASS_DECL, this::visitClass);
-        addVisit(VAR_DECL, this::simpleVarDecl);
+        //addVisit(VAR_DECL, this::simpleVarDecl);
         addVisit(PARAM, this::visitParam);
         addVisit(METHOD_DECL, this::visitMethodDecl);
         addVisit(RETURN_STMT, this::visitReturn);
         addVisit(ASSIGN_STMT, this::visitAssignStmt);
+        addVisit(IF_STMT, this::visitIfStmt);
         setDefaultVisit(this::defaultVisit);
+    }
+
+    private String indent(String code) {
+        return code.lines()
+                .map(line -> line.isBlank() ? line : "   " + line)
+                .collect(Collectors.joining("\n", "", "\n"));
+    }
+
+
+    private String visitIfStmt(JmmNode node, Void unused) {
+        StringBuilder code = new StringBuilder();
+
+        var children = node.getChildren();
+
+        var condNode = children.get(0);
+        var thenNode = children.get(1);
+        var hasElse = children.size() > 2;
+        var elseNode = hasElse ? children.get(2) : null;
+
+        String trueLabel = ollirTypes.nextTemp("IF_TRUE");
+        String endLabel  = ollirTypes.nextTemp("IF_END");
+
+        // Evaluate condition
+        var cond = exprVisitor.visit(condNode);
+        code.append(cond.getComputation());
+
+        // Conditional jump
+        code.append("if (")
+                .append(cond.getCode())
+                .append(") goto ")
+                .append(trueLabel)
+                .append(END_STMT);
+
+        // Else block
+        if (hasElse) {
+            code.append(indent(visit(elseNode)));
+        }
+
+        // Jump to end
+        code.append("goto ")
+                .append(endLabel)
+                .append(END_STMT);
+
+        // Then label
+        code.append(trueLabel)
+                .append(":\n");
+
+        code.append(indent(visit(thenNode)));
+
+        // End label
+        code.append(endLabel)
+                .append(":\n");
+
+        return code.toString();
     }
 
 
     private String simpleVarDecl(JmmNode varDecl, Void unused) {
-        return varDecl.get("name") + ollirTypes.toOllirType(varDecl.getObject("typeNode", JmmNode.class)) + ";";
+        StringBuilder code = new StringBuilder();
+        code.append(varDecl.get("name"));
+
+        var type = ollirTypes.toOllirType(varDecl.getChild(0));
+        code.append(type);
+        code.append(END_STMT);
+
+        return code.toString();
     }
 
 
@@ -187,18 +250,18 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         code.append(retType);
         code.append(L_BRACKET);
 
-        var stmt = node.getChildren().getLast();
-        switch (stmt.getKind()){
-            case STMT:
-            case RETURN_STMT:
-            case ASSIGN_STMT:
-                var stmtsCode = visit(stmt);
-                code.append(stmtsCode);
-                break;
-            default:
-                break;
+        for (var child : node.getChildren()) {
+            switch (child.getKind()) {
+                case VISIBILITY_DECLARATION:
+                case SIMPLE_TYPE:
+                case PARAM:
+                    // metadata → skip
+                    break;
+                default:
+                    code.append("   ").append(visit(child));
+            }
         }
-        
+
         code.append(NL);
         code.append(R_BRACKET);
         code.append(NL);

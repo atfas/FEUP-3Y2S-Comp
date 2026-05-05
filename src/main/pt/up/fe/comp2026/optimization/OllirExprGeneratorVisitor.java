@@ -42,11 +42,40 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(PRIMARY_EXPR, this::defaultVisitExpr);
         addVisit(POSTFIX_EXPR, this::visitPostfixExpr);
         addVisit(ARRAY_EXPR, this::visitArrayExpr);
+        addVisit(NEW_ARRAY_EXPR, this::visitNewArrayExpr);
+        addVisit(SIZED_ARRAY_DIM, this::defaultVisitExpr);
 
         addVisit(THIS_LITERAL, this::visitThisLiteral);
         addVisit(INTEGER_LITERAL, this::visitInteger);
         addVisit(TRUE_LITERAL, this::visitTrueLiteral);
         addVisit(FALSE_LITERAL, this::visitFalseLiteral);
+    }
+
+    private OllirExprResult visitNewArrayExpr(JmmNode node, Void unused) {
+        StringBuilder computation = new StringBuilder();
+        var arrayTemp = ollirTypes.nextTemp();
+        var type = ollirTypes.toOllirType(node.getChild(0));
+
+        var size = visit(node.getChild(1));
+
+        computation.append(size.getComputation());
+
+        computation.append(arrayTemp)
+                .append(".array")
+                .append(type)
+                .append(ASSIGN)
+                .append(".array")
+                .append(type)
+                .append(SPACE)
+                .append("new(array, ")
+                .append(size.getCode())
+                .append(").array")
+                .append(type)
+                .append(END_STMT);
+
+        var code = arrayTemp + ".array" + type;
+
+        return new OllirExprResult(code, computation);
     }
 
     private OllirExprResult visitArrayExpr(JmmNode node, Void unused) {

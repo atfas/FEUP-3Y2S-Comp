@@ -1,5 +1,7 @@
 package pt.up.fe.comp2026.optimization;
 
+import org.specs.comp.ollir.Ollir;
+import org.stringtemplate.v4.ST;
 import pt.up.fe.comp.jmm.analysis.table.MethodSymbol;
 import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
 import pt.up.fe.comp.jmm.analysis.table.type.JmmType;
@@ -154,20 +156,36 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
     private String visitAssignStmt(JmmNode node, Void unused) {
         // TODO: Several hard-coded things, should be rewritten
 
-        var rhs = exprVisitor.visit(node.getChild(0));
+        var rhs = exprVisitor.visit(node.getChildren().getLast());
 
         // code to compute self
         // statement has type of lhs
         var varName = node.get(JmmAttributes.ASSIGN_STMT.VAR);
-        JmmType thisType = TypeUtils.intType();
-        String typeString = ollirTypes.toOllirType(thisType);
-        var varCode = ollirTypes.sanitizeId(varName) + typeString;
+        JmmType thisType = types.getVarType(node.get("var"), currentMethod);
 
+
+        String typeString = ollirTypes.toOllirType(thisType);
+        StringBuilder varCode = new StringBuilder();
+        varCode.append(ollirTypes.sanitizeId(varName))
+                .append(typeString);
+
+        // if array
+        OllirExprResult lhs = null;
+        if (node.getChildren().size() > 1){
+            lhs = exprVisitor.visit(node.getChild(0));
+
+            varCode.append("[")
+                    .append(lhs.getCode())
+                    .append("]")
+                    .append(ollirTypes.toOllirType(thisType.asArray().itemType()));
+        }
 
         var code = new StringBuilder();
 
         // code to compute the children
         code.append(rhs.getComputation());
+        if (lhs != null)
+            code.append(lhs.getComputation());
 
         code.append(varCode);
         code.append(SPACE);

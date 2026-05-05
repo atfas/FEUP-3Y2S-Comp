@@ -39,9 +39,79 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
     protected void buildVisitor() {
         addVisit(VAR_REF_EXPR, this::visitVarRef);
         addVisit(BINARY_EXPR, this::visitBinExpr);
-        addVisit(INTEGER_LITERAL, this::visitInteger);
         addVisit(PRIMARY_EXPR, this::defaultVisitExpr);
-        addVisit(POSTFIX_EXPR, this::defaultVisitExpr);
+        addVisit(POSTFIX_EXPR, this::visitPostfixExpr);
+        addVisit(ARRAY_EXPR, this::visitArrayExpr);
+
+        addVisit(THIS_LITERAL, this::visitThisLiteral);
+        addVisit(INTEGER_LITERAL, this::visitInteger);
+        addVisit(TRUE_LITERAL, this::visitTrueLiteral);
+        addVisit(FALSE_LITERAL, this::visitFalseLiteral);
+    }
+
+    private OllirExprResult visitArrayExpr(JmmNode node, Void unused) {
+        return visit(node.getChild(0));
+    }
+
+    private OllirExprResult visitPostfixExpr(JmmNode node, Void unused) {
+
+        // baseExpr
+        var base = visit(node.getChild(0));
+
+        // No postfix → just the base
+        if (node.getNumChildren() == 1) {
+            return base;
+        }
+
+        // Only handling ArrayExpr here (others later)
+        JmmNode postfix = node.getChild(1);
+
+        if (postfix.getKind().equals(ARRAY_EXPR)) {
+
+            var index = visit(postfix); // index expression
+
+            StringBuilder computation = new StringBuilder();
+            computation.append(base.getComputation());
+            computation.append(index.getComputation());
+
+            // Element type of a[i]
+            JmmType elemType = TypeUtils.with(table).getExprType(node);
+            String elemOllirType = ollirTypes.toOllirType(elemType);
+
+            String temp = ollirTypes.nextTemp() + elemOllirType;
+
+            computation.append(temp)
+                    .append(" :=.")
+                    .append(elemOllirType.substring(1))
+                    .append(" ")
+                    .append(base.getCode())
+                    .append("[")
+                    .append(index.getCode())
+                    .append("]")
+                    .append(elemOllirType)
+                    .append(";\n");
+
+            return new OllirExprResult(temp, computation);
+        }
+
+        // Fallback: just return base (field/method later)
+        return base;
+    }
+
+    private OllirExprResult visitFalseLiteral(JmmNode node, Void unused) {
+        return new OllirExprResult("0.bool");
+    }
+
+    private OllirExprResult visitTrueLiteral(JmmNode node, Void unused) {
+        return new OllirExprResult("1.bool");
+    }
+
+    private OllirExprResult visitThisLiteral(JmmNode node, Void unused) {
+        // Type of "this" is the current class (or its supertype)
+        String className = table.getClassName();
+        String code = "this." + className;
+
+        return new OllirExprResult(code);
     }
 
     private OllirExprResult defaultVisitExpr(JmmNode node, Void unused) {

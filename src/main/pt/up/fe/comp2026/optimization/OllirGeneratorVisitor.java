@@ -216,9 +216,9 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
         var children = node.getChildren();
 
-        var initNode = children.get(0);
-        var condNode = children.get(1);
-        var updateNode = children.get(2);
+        var initNode = (children.get(0)).getChild(0);
+        var condNode = (children.get(1)).getChild(0);
+        var updateNode = (children.get(2)).getChild(0);
         var bodyNode = children.get(3);
 
         var cond = exprVisitor.visit(condNode);

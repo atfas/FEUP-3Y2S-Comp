@@ -65,6 +65,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         addVisit(RETURN_STMT, this::visitReturn);
         addVisit(ASSIGN_STMT, this::visitAssignStmt);
         addVisit(IF_STMT, this::visitIfStmt);
+        addVisit(WHILE_STMT, this::visitWhileStmt);
         setDefaultVisit(this::defaultVisit);
     }
 
@@ -114,6 +115,55 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
                 .append(":\n");
 
         code.append(indent(visit(thenNode)));
+
+        // End label
+        code.append(endLabel)
+                .append(":\n");
+
+        return code.toString();
+    }
+
+    private String visitWhileStmt(JmmNode node, Void unused) {
+        StringBuilder code = new StringBuilder();
+
+        var children = node.getChildren();
+
+        var condNode = children.get(0);
+        var bodyNode = children.get(1);
+        var cond = exprVisitor.visit(condNode);
+
+        String condLabel = ollirTypes.nextTemp("WHILE_COND");
+        String bodyLabel = ollirTypes.nextTemp("WHILE_BODY");
+        String endLabel = ollirTypes.nextTemp("WHILE_END");
+
+        code.append(condLabel)
+                .append(":\n");
+
+        // Evaluate condition
+        code.append(cond.getComputation());
+
+        // Conditional jump
+        code.append("if (")
+                .append(cond.getCode())
+                .append(") goto ")
+                .append(bodyLabel)
+                .append(END_STMT);
+
+        // Jump to end
+        code.append("goto ")
+                .append(endLabel)
+                .append(END_STMT);
+
+        code.append(bodyLabel)
+                .append(":\n");
+
+        // Loop body
+        code.append(indent(visit(bodyNode)));
+
+        // Jump back to condition
+        code.append("goto ")
+                .append(condLabel)
+                .append(END_STMT);
 
         // End label
         code.append(endLabel)

@@ -540,16 +540,44 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
 
     private OllirExprResult visitVarRef(JmmNode node, Void unused) {
 
+        var name = node.get("name");
         var id = ollirTypes.sanitizeId(node.get("name"));
+
         JmmType type = types.getExprType(node);
         String ollirType = ollirTypes.toOllirType(type);
 
 
-        String code = id + ollirType;
+        var methodNode = node.getAncestor(METHOD_DECL).orElseThrow();
+        var signature = TypeUtils.with(table).getMethodDeclSignature(methodNode);
+        var method = table.getMethod(signature).orElseThrow();
 
-        return new OllirExprResult(code);
+        boolean isLocal = method.getLocalVariable(name).isPresent();
+        boolean isParam = method.getParameter(name).isPresent();
 
+        // Locals and parameters
+        if (isLocal || isParam) {
+            String code = id + ollirType;
+            return new OllirExprResult(code);
+        }
+
+        // Fields
+        String temp = ollirTypes.nextTemp() + ollirType;
+        StringBuilder computation = new StringBuilder();
+
+        computation.append(temp)
+                .append(ASSIGN)
+                .append(ollirType)
+                .append(SPACE)
+                .append("getfield(")
+                .append("this.")
+                .append(table.getClassName())
+                .append(", ")
+                .append(id)
+                .append(ollirType)
+                .append(")")
+                .append(ollirType)
+                .append(END_STMT);
+
+        return new OllirExprResult(temp, computation);
     }
-
-
 }

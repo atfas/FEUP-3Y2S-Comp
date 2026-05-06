@@ -17,6 +17,7 @@ import pt.up.fe.comp2026.ast.TypeUtils;
 import pt.up.fe.comp2026.jmm.ast.JmmAttributes;
 import pt.up.fe.specs.util.utilities.StringLines;
 
+import java.lang.ref.SoftReference;
 import java.sql.Struct;
 import java.util.stream.Collectors;
 
@@ -306,57 +307,92 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
     }
 
 
-
-
     private String visitPackageDecl(JmmNode packageDecl, Void unused) {
         return "package " + String.join(".", packageDecl.getObjectAsList("path", String.class)) + ";\n";
     }
 
 
     private String visitAssignStmt(JmmNode node, Void unused) {
-        // TODO: Several hard-coded things, should be rewritten
 
+        StringBuilder code = new StringBuilder();
+
+        // RHS expression
         var rhs = exprVisitor.visit(node.getChildren().getLast());
+        code.append(rhs.getComputation());
 
-        // code to compute self
-        // statement has type of lhs
-        var varName = node.get(JmmAttributes.ASSIGN_STMT.VAR);
-        JmmType thisType = types.getVarType(node.get("var"), currentMethod);
+        String varName = node.get(JmmAttributes.ASSIGN_STMT.VAR);
 
+        // --- Case 1: array element assignment (a[i] = value) ---
+        if (node.getChildren().size() > 1) {
 
-        String typeString = ollirTypes.toOllirType(thisType);
-        StringBuilder varCode = new StringBuilder();
-        varCode.append(ollirTypes.sanitizeId(varName))
-                .append(typeString);
+            var indexExpr = exprVisitor.visit(node.getChild(0));
+            code.append(indexExpr.getComputation());
 
-        // if array
-        OllirExprResult lhs = null;
-        if (node.getChildren().size() > 1){
-            lhs = exprVisitor.visit(node.getChild(0));
+            JmmType arrayType =
+                    types.getVarType(varName, currentMethod);
 
-            varCode.append("[")
-                    .append(lhs.getCode())
+            String elemType =
+                    ollirTypes.toOllirType(arrayType.asArray().itemType());
+
+            code.append(ollirTypes.sanitizeId(varName))
+                    .append(ollirTypes.toOllirType(arrayType))
+                    .append("[")
+                    .append(indexExpr.getCode())
                     .append("]")
-                    .append(ollirTypes.toOllirType(thisType.asArray().itemType()));
+                    .append(elemType)
+                    .append(" :=.")
+                    .append(elemType.substring(1))
+                    .append(" ")
+                    .append(rhs.getCode())
+                    .append(END_STMT);
+
+            return code.toString();
         }
 
-        var code = new StringBuilder();
+        // Determine variable kind
+        boolean isLocal =
+                currentMethod.getLocalVariable(varName).isPresent();
 
-        // code to compute the children
-        code.append(rhs.getComputation());
-        if (lhs != null)
-            code.append(lhs.getComputation());
+        boolean isParam =
+                currentMethod.getParameter(varName).isPresent();
 
-        code.append(varCode);
-        code.append(SPACE);
+        // --- Case 2: field assignment ---
+        if (!isLocal && !isParam) {
 
-        code.append(ASSIGN);
-        code.append(typeString);
-        code.append(SPACE);
+            JmmType fieldType =
+                    table.getField(varName).orElseThrow().type();
 
-        code.append(rhs.getCode());
+            String ollirType =
+                    ollirTypes.toOllirType(fieldType);
 
-        code.append(END_STMT);
+            code.append("putfield(")
+                    .append("this.")
+                    .append(table.getClassName())
+                    .append(", ")
+                    .append(varName)
+                    .append(ollirType)
+                    .append(", ")
+                    .append(rhs.getCode())
+                    .append(").V")
+                    .append(END_STMT);
+
+            return code.toString();
+        }
+
+        // --- Case 3: local variable or parameter assignment ---
+        JmmType varType =
+                types.getVarType(varName, currentMethod);
+
+        String ollirType =
+                ollirTypes.toOllirType(varType);
+
+        code.append(ollirTypes.sanitizeId(varName))
+                .append(ollirType)
+                .append(ASSIGN)
+                .append(ollirType)
+                .append(SPACE)
+                .append(rhs.getCode())
+                .append(END_STMT);
 
         return code.toString();
     }

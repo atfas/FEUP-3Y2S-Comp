@@ -73,7 +73,7 @@ public class JmmSymbolTableBuilder {
         }
         declaredClasses.put(className, fullyQualifiedName);
 
-        String superQualifiedName = classDecl.getOptional("parent").orElse(null);
+        String superQualifiedName = classDecl.getOptional("parent").orElse("Object");
 
         if (classDecl.hasAttribute("parent")) {
             var parentName = classDecl.get("parent");

@@ -88,10 +88,6 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
     }
 
     private Boolean isValidAssign(JmmType varType, JmmType givenType){
-        System.out.println("=== isValidAssign ===");
-        System.out.println("varType: " + varType + " class: " + varType.getClass().getSimpleName());
-        System.out.println("givenType: " + givenType + " class: " + givenType.getClass().getSimpleName());
-
         // If either type is explicitly imported (not java.lang, not 'this')
         if (varType instanceof JmmClassType classType && isExplicitlyImported(classType)
                 && !classType.name().equals(table.getClassName())
@@ -111,10 +107,6 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
 
         // Class types
         if (varType instanceof JmmClassType varClass && givenType instanceof JmmClassType givenClass) {
-            System.out.println("varClass.name(): " + varClass.name());
-            System.out.println("givenClass.name(): " + givenClass.name());
-            System.out.println("table.getFullyQualifiedName(): " + table.getFullyQualifiedName());
-            System.out.println("table.getClassName(): " + table.getClassName());
             if (varType.equals(givenType)) {
                 return isJavaLang(varClass) || varClass.name().equals(table.getClassName());
             }
@@ -122,13 +114,12 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
             // Handle 'this' assigned to a type
             if (givenClass.name().equals(table.getFullyQualifiedName()) ||
                     givenClass.name().equals(table.getClassName())) {
-                System.out.println("IN THIS BLOCK");
-                System.out.println("varClass.name(): " + varClass.name());
-                System.out.println("superName: " + table.getSuper());
+
                 if (varClass.name().equals(table.getClassName()) ||
                         varClass.name().equals(table.getFullyQualifiedName())) return true;
 
-                String superName = table.getSuper();
+                String superName = table.getSuperFullyQualifiedName();
+
                 if (superName == null || superName.isEmpty()) return false;
 
                 Class<?> varClazz = resolveClass(varClass.name());

@@ -64,8 +64,14 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
     }
 
     private OllirExprResult visitNewObjectExpr(JmmNode node, Void unused) {
+        String className;
 
-        String className = node.get("name");
+        if (node.hasAttribute("name")) {
+            className = node.get("name");
+        } else {
+            className = node.getChild(0).get("name");
+        }
+
         String type = "." + className;
         String temp = ollirTypes.nextTemp() + type;
 

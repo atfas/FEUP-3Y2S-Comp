@@ -525,11 +525,19 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
     }
 
     private String buildConstructor() {
+        String superName = table.getSuperFullyQualifiedName();
+
+        if (superName == null || superName.isBlank()) {
+            superName = "Object";
+        } else {
+            superName = superName.substring(superName.lastIndexOf('.') + 1);
+        }
+
         return """
-                .construct %s().V {
-                    invokespecial(this, "<init>").V;
-                }
-                """.formatted(table.getClassName());
+            .construct "<init>"().V {
+                invokespecial(this.%s, "<init>").V;
+            }
+            """.formatted(superName);
     }
 
     private String visitProgram(JmmNode node, Void unused) {

@@ -495,6 +495,8 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         code.append(NL);
         code.append(table.getClassName());
 
+
+
         code.append(L_BRACKET);
         code.append(NL);
         code.append(NL);
@@ -530,7 +532,36 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
         StringBuilder code = new StringBuilder();
 
-        node.getChildren().stream().map(this::visit).forEach(code::append);
+        var packageDecl = node.getChildren(PACKAGE_DECL);
+        var importDecl = node.getChildren(IMPORT_DECL);
+
+        // Package declaration
+        if(!packageDecl.isEmpty()) {
+            code.append(visit(packageDecl.getFirst()));
+            code.append(NL);
+        }
+
+        // Imports declaration
+        for (var imp : importDecl) {
+            code.append("import ")
+                    .append(String.join(".", imp.getObjectAsList("path", String.class)))
+                    .append(END_STMT);
+        }
+
+        if(!importDecl.isEmpty()) {
+            code.append(NL);
+        }
+
+        // Rest of the program
+        for (var child : node.getChildren()) {
+            switch (child.getKind()) {
+                case PACKAGE_DECL:
+                case IMPORT_DECL:
+                    break;
+                default:
+                    code.append(visit(child));
+            }
+        }
 
         return code.toString();
     }

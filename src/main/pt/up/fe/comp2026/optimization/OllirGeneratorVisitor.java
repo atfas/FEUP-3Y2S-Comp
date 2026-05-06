@@ -495,6 +495,12 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         code.append(NL);
         code.append(table.getClassName());
 
+        String superName = table.getSuperFullyQualifiedName();
+        if (superName != null && !superName.isBlank()) {
+            String simpleSuperName = superName.substring(superName.lastIndexOf('.') + 1);
+            code.append(" extends ").append(simpleSuperName);
+        }
+
         code.append(L_BRACKET);
         code.append(NL);
         code.append(NL);
@@ -519,18 +525,55 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
     }
 
     private String buildConstructor() {
+        String superName = table.getSuperFullyQualifiedName();
+
+        if (superName == null || superName.isBlank()) {
+            superName = "Object";
+        } else {
+            superName = superName.substring(superName.lastIndexOf('.') + 1);
+        }
+
         return """
-                .construct %s().V {
-                    invokespecial(this, "<init>").V;
-                }
-                """.formatted(table.getClassName());
+            .construct "<init>"().V {
+                invokespecial(this.%s, "<init>").V;
+            }
+            """.formatted(superName);
     }
 
     private String visitProgram(JmmNode node, Void unused) {
 
         StringBuilder code = new StringBuilder();
 
-        node.getChildren().stream().map(this::visit).forEach(code::append);
+        var packageDecl = node.getChildren(PACKAGE_DECL);
+        var importDecl = node.getChildren(IMPORT_DECL);
+
+        // Package declaration
+        if(!packageDecl.isEmpty()) {
+            code.append(visit(packageDecl.getFirst()));
+            code.append(NL);
+        }
+
+        // Imports declaration
+        for (var imp : importDecl) {
+            code.append("import ")
+                    .append(String.join(".", imp.getObjectAsList("path", String.class)))
+                    .append(END_STMT);
+        }
+
+        if(!importDecl.isEmpty()) {
+            code.append(NL);
+        }
+
+        // Rest of the program
+        for (var child : node.getChildren()) {
+            switch (child.getKind()) {
+                case PACKAGE_DECL:
+                case IMPORT_DECL:
+                    break;
+                default:
+                    code.append(visit(child));
+            }
+        }
 
         return code.toString();
     }

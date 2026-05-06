@@ -58,6 +58,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(INTEGER_LITERAL, this::visitInteger);
         addVisit(TRUE_LITERAL, this::visitTrueLiteral);
         addVisit(FALSE_LITERAL, this::visitFalseLiteral);
+        addVisit(NEW_ARRAY_LITERAL_EXPR, this::visitNewArrayLiteral);
     }
 
     private OllirExprResult visitNotExpr(JmmNode node, Void unused) {
@@ -295,6 +296,55 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         String code = "this." + className;
 
         return new OllirExprResult(code);
+    }
+
+    private OllirExprResult visitNewArrayLiteral(JmmNode node, Void unused) {
+        StringBuilder computation = new StringBuilder();
+        var arrayTemp = ollirTypes.nextTemp();
+        var type = ollirTypes.toOllirType((node.getChild(0)));
+        var elements = (node.getChild(1)).getChildren();
+        var sizeCode = elements.size() + ".i32";
+
+        // Create array
+        computation.append(arrayTemp)
+                .append(".array")
+                .append(type)
+                .append(ASSIGN)
+                .append(".array")
+                .append(type)
+                .append(SPACE)
+                .append("new(array, ")
+                .append(sizeCode)
+                .append(").array")
+                .append(type)
+                .append(END_STMT);
+
+        for (int i = 0; i < elements.size(); i++) {
+            var element = visit(elements.get(i));
+
+            // Evaluate element
+            computation.append(element.getComputation());
+
+            // Store element in array position i
+            computation.append(arrayTemp)
+                    .append(".array")
+                    .append(type)
+                    .append("[")
+                    .append(i)
+                    .append(".i32")
+                    .append("]")
+                    .append(type)
+                    .append(SPACE)
+                    .append(ASSIGN)
+                    .append(type)
+                    .append(SPACE)
+                    .append(element.getCode())
+                    .append(END_STMT);
+        }
+
+        var code = arrayTemp + ".array" + type;
+
+        return new OllirExprResult(code, computation);
     }
 
     private OllirExprResult defaultVisitExpr(JmmNode node, Void unused) {

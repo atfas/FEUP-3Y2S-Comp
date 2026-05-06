@@ -62,7 +62,26 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
         return null;
     }
 
+    private boolean isImportedMethodCall(JmmNode expr, SymbolTable table) {
+        if (!POSTFIX_EXPR.check(expr)) return false;
+        if (expr.getNumChildren() < 2) return false;
+        if (!OBJECT_CALL_EXPR.check(expr.getChild(1))) return false;
+
+        JmmNode base = expr.getChild(0);
+        if (!VAR_REF_EXPR.check(base)) return false;
+
+        String baseName = base.get("name");
+        return table.getImports().stream()
+                .anyMatch(imp -> imp.equals(baseName) || imp.endsWith("." + baseName));
+    }
+
     private Void varAssign(JmmNode assign, SymbolTable table){
+        JmmNode rhsExpr = assign.getChild(0);
+
+        if (isImportedMethodCall(rhsExpr, table)) {
+            return null;
+        }
+
         var varType = TypeUtils.with(table).getVarType(assign.get("var"), currentMethod);
 
         // If this is an array element assignment (arr[i] = val), the RHS is the last child.

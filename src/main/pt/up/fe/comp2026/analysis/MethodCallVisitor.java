@@ -74,31 +74,10 @@ public class MethodCallVisitor extends AnalysisVisitorWithTable {
 
         String callerClassName = classType.name();
 
-        var importedTableOpt = this.table.getImportedSymbolTable(callerClassName);
-        if (importedTableOpt.isEmpty()) {
-            // Try Java reflection for JDK/classpath classes
-            tryReflectionValidation(callNode, table, callerClassName, methodName, argTypes);
+        if (classType.isImported()) {
             return null;
         }
 
-        var importedTable = importedTableOpt.get();
-        var candidates = importedTable.getMethods(methodName);
-
-        if (candidates.isEmpty()) {
-            addReport(newError(callNode,
-                    "Method '" + methodName + "' not found in class '" + callerClassName + "'"));
-            return null;
-        }
-
-        boolean anyMatch = candidates.stream().anyMatch(candidate ->
-                typesMatch(candidate.parameters().stream()
-                        .map(p -> p.type()).toList(), argTypes));
-
-        if (!anyMatch) {
-            addReport(newError(callNode,
-                    "No matching overload of '" + methodName + "' in class '" + callerClassName
-                            + "' for argument types " + argTypes));
-        }
 
         return null;
     }

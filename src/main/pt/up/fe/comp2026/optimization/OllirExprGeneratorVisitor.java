@@ -4,21 +4,14 @@ import pt.up.fe.comp.jmm.analysis.table.MethodSymbol;
 import pt.up.fe.comp.jmm.analysis.table.Signature;
 import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
 import pt.up.fe.comp.jmm.analysis.table.type.JmmType;
-import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmArrayType;
 import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmClassType;
 import pt.up.fe.comp.jmm.ast.AJmmVisitor;
 import pt.up.fe.comp.jmm.ast.JmmNode;
-import pt.up.fe.comp.jmm.ast.JmmNodeImpl;
-import pt.up.fe.comp.jmm.report.Report;
-import pt.up.fe.comp.jmm.report.ReportType;
-import pt.up.fe.comp.jmm.report.Stage;
-import pt.up.fe.comp2026.ast.AccessType;
 import pt.up.fe.comp2026.ast.TypeUtils;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.LogRecord;
-import java.util.stream.Collectors;
+import java.util.prefs.NodeChangeEvent;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
 
@@ -119,48 +112,157 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
     }
 
     private OllirExprResult applyObjectCall(OllirExprResult base, JmmNode node) {
+        String methodName = node.get("name");
+
+        // Collect Args
+        List<OllirExprResult> args = getMethodArgs(node);
+        
+        // get return type
+        String ollirRetType = getMethodReturnType(node);
+
+        JmmNode baseNode = node.getParent().getChild(0);
+
+        // static imported call ONLY if the VAR_REF refers to an imported class name
+        boolean isStaticImportedCall =
+                baseNode.getKind().equals(VAR_REF_EXPR) &&
+                        table.getImports().stream()
+                                .anyMatch(imp ->
+                                        imp.equals(baseNode.get("name")) ||
+                                                imp.endsWith("." + baseNode.get("name"))
+                                );
+
+        if (isStaticImportedCall) {
+            return emitInvokeStatic(node, methodName, ollirRetType, args);
+        }
+
+
+        return emitInvokeVirtual(base, methodName, ollirRetType, args);
+    }
+
+    private OllirExprResult emitInvokeStatic(
+            JmmNode node,
+            String methodName,
+            String ollirRetType,
+            List<OllirExprResult> args) {
+
+        StringBuilder computation = new StringBuilder();
+
+        // Emit argument computations
+        for (var arg : args) {
+            computation.append(arg.getComputation());
+        }
+
+        // Static calls use the class name, not an object
+        String className =
+                ((JmmClassType) TypeUtils.with(table)
+                        .getExprType(node.getParent().getChild(0)))
+                        .name();
+
+
+        // ---- VOID static call ----
+        if (ollirRetType.equals(".V")) {
+
+            computation.append("invokestatic(")
+                    .append(className)
+                    .append(", \"")
+                    .append(methodName)
+                    .append("\"");
+
+            for (var arg : args) {
+                computation.append(", ").append(arg.getCode());
+            }
+
+            computation.append(").V")
+                    .append(END_STMT);
+
+            // No value produced
+            return new OllirExprResult("", computation);
+        }
+
+        // ---- NON‑VOID static call ----
+        String temp = ollirTypes.nextTemp() + ollirRetType;
+
+        computation.append(temp)
+                .append(ASSIGN)
+                .append(ollirRetType)
+                .append(SPACE)
+                .append("invokestatic(")
+                .append(className)
+                .append(", \"")
+                .append(methodName)
+                .append("\"");
+
+        for (var arg : args) {
+            computation.append(", ").append(arg.getCode());
+        }
+
+        computation.append(")")
+                .append(ollirRetType)
+                .append(END_STMT);
+
+        return new OllirExprResult(temp, computation);
+    }
+
+    private String getMethodReturnType(JmmNode node) {
 
         String methodName = node.get("name");
 
-        StringBuilder computation = new StringBuilder();
-        computation.append(base.getComputation());
+        List<JmmType> args = new ArrayList<>();
+        if (node.getNumChildren() == 1 &&
+                node.getChild(0).getKind().equals(EXPR_LIST)) {
 
-        // Collect arguments
-        List<OllirExprResult> args = new ArrayList<>();
-        if (node.getNumChildren() > 0) {
             for (var argNode : node.getChild(0).getChildren()) {
-                var arg = visit(argNode);
-                args.add(arg);
-                computation.append(arg.getComputation());
+                args.add(types.getExprType(argNode));
             }
         }
-
 
         JmmType baseType =
                 TypeUtils.with(table).getExprType(node.getParent().getChild(0));
 
-        List<JmmType> argumentTypes = List.of();
-        if (node.getNumChildren() == 1 && node.getChild(0).getKind().equals(EXPR_LIST)) {
-            argumentTypes = node.getChild(0).getChildren().stream()
-                    .map(arg -> TypeUtils.with(table).getExprType(arg))
-                    .toList();
+        // ✅ FIRST: try current class
+        Signature signature = new Signature(methodName, args);
+        var methodOpt = table.getMethod(signature);
+        if (methodOpt.isPresent()) {
+            return ollirTypes.toOllirType(methodOpt.get().returnType());
         }
 
-        List<JmmType> finalArgumentTypes = argumentTypes;
-        MethodSymbol method = table.getMethods().stream()
-                .filter(m -> m.name().equals(methodName))
-                .filter(m -> m.parameters().size() == finalArgumentTypes.size())
-                .findFirst()
-                .orElseThrow();
+        // ✅ SECOND: imported or superclass → trust semantic analysis
+        return ollirTypes.toOllirType(
+                TypeUtils.with(table).getExprType(node.getParent())
+        );
+    }
 
+    private List<OllirExprResult> getMethodArgs(JmmNode node) {
+        List<OllirExprResult> args = new ArrayList<>();
 
-        JmmType retType = method.returnType();
-        String ollirRetType = ollirTypes.toOllirType(retType);
+        if (node.getNumChildren() == 1 &&
+                node.getChild(0).getKind().equals(EXPR_LIST)) {
 
+            for (var argNode : node.getChild(0).getChildren()) {
+                var arg = visit(argNode);
+                args.add(arg);
+            }
+        }
 
-        // === VOID method ===
+        return args;
+    }
+
+    private OllirExprResult emitInvokeVirtual(
+            OllirExprResult base,
+            String methodName,
+            String ollirRetType,
+            List<OllirExprResult> args
+    ) {
+        StringBuilder computation = new StringBuilder();
+
+        // Include base and argument computations
+        computation.append(base.getComputation());
+        for (var arg : args) {
+            computation.append(arg.getComputation());
+        }
+
+        // ---- VOID CALL ----
         if (ollirRetType.equals(".V")) {
-
             computation.append("invokevirtual(")
                     .append(base.getCode())
                     .append(", \"")
@@ -174,10 +276,11 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
             computation.append(").V")
                     .append(END_STMT);
 
+            // preserve receiver for chaining
             return new OllirExprResult(base.getCode(), computation);
         }
 
-        // === NON-VOID method ===
+        // ---- NON-VOID CALL ----
         String temp = ollirTypes.nextTemp() + ollirRetType;
 
         computation.append(temp)

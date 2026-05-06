@@ -299,7 +299,7 @@ public class TypeUtils {
             var child = children.get(i);
 
             if (OBJECT_CALL_EXPR.check(child)) {
-                currentType = getObjectCallType(children.get(0), child);
+                currentType = getObjectCallType(currentType, child);
             } else if (ARRAY_EXPR.check(child)) {
                 JmmNode indexExpr = child.getChild(0);
                 JmmType indexType = getExprType(indexExpr);
@@ -333,43 +333,35 @@ public class TypeUtils {
         return currentType;
     }
 
-    private JmmType getObjectCallType(JmmNode caller, JmmNode funcCall) {
+    private JmmType getObjectCallType(JmmType receiverType, JmmNode funcCall) {
+
         String methodName = funcCall.get("name");
-
         List<JmmType> argTypes = new ArrayList<>();
-        Optional<JmmNode> exprListOpt = funcCall.getChildren().stream()
-                .filter(c -> c.getKind() == EXPR_LIST)
-                .findFirst();
 
-        if (exprListOpt.isPresent()) {
-            for (JmmNode arg : exprListOpt.get().getChildren()) {
+        if (funcCall.getNumChildren() == 1 &&
+                funcCall.getChild(0).getKind().equals(EXPR_LIST)) {
+
+            for (JmmNode arg : funcCall.getChild(0).getChildren()) {
                 argTypes.add(getExprType(arg));
             }
         }
 
         Signature signature = new Signature(methodName, argTypes);
-        var method = getMethodInHierarchy(signature);
-        if (method.isPresent()) return method.get().returnType();
 
-        // Give benefit of the doubt for imported class calls
-        JmmType callerType = getExprType(caller);
-        if (callerType instanceof JmmClassType classType) {
-            boolean isImported = table.getImports().stream()
-                    .anyMatch(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()));
-            if (isImported) {
-                try {
-                    String fqn = table.getImports().stream()
-                            .filter(imp -> imp.equals(classType.name()) || imp.endsWith("." + classType.name()))
-                            .findFirst().orElse(classType.name());
-                    Class<?> clazz = Class.forName(fqn);
-                    var matchingMethod = java.util.Arrays.stream(clazz.getMethods())
-                            .filter(m -> m.getName().equals(methodName))
-                            .findFirst();
-                    if (matchingMethod.isPresent() && matchingMethod.get().getReturnType().isArray()) {
-                        return JmmArrayType.of(intType());
-                    }
-                } catch (ClassNotFoundException ignored) {}
-                return callerType;
+        // 1) Try current class / known hierarchy
+        var methodOpt = getMethodInHierarchy(signature);
+        if (methodOpt.isPresent()) {
+            return methodOpt.get().returnType();
+        }
+
+        // 2) Try imported receiver class hierarchy
+        if (receiverType instanceof JmmClassType cls && cls.isImported()) {
+            var importedTableOpt = table.getImportedSymbolTable(cls.fullyQualifiedName());
+            if (importedTableOpt.isPresent()) {
+                return getMethodInHierarchyRecursive(importedTableOpt.get(), signature)
+                        .map(MethodSymbol::returnType)
+                        .orElseThrow(() ->
+                                new RuntimeException("Method not found in imported class: " + signature));
             }
         }
 

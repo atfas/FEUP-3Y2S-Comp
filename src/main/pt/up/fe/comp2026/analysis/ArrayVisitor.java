@@ -92,6 +92,20 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
         return null;
     }
 
+    private boolean isImportedMethodCall(JmmNode expr, SymbolTable table) {
+        if (!POSTFIX_EXPR.check(expr)) return false;
+        if (expr.getNumChildren() < 2) return false;
+        if (!OBJECT_CALL_EXPR.check(expr.getChild(1))) return false;
+
+        JmmNode base = expr.getChild(0);
+        if (!VAR_REF_EXPR.check(base)) return false;
+
+        String baseName = base.get("name");
+        return table.getImports().stream()
+                .anyMatch(imp -> imp.equals(baseName) || imp.endsWith("." + baseName));
+    }
+
+
     /** Returns true if this dimension node actually carries a size expression. */
     private boolean hasSize(JmmNode dimNode) {
 
@@ -99,6 +113,11 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
     }
 
     private Void arrayAssignChecks(JmmNode varAssign, SymbolTable table) {
+        JmmNode rhsExpr = varAssign.getChild(0);
+
+        if (isImportedMethodCall(rhsExpr, table)) {
+            return null;
+        }
 
         var methodNode = varAssign.getAncestor(METHOD_DECL).orElseThrow();
         var signature = TypeUtils.with(table).getMethodDeclSignature(methodNode);
@@ -161,6 +180,11 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
     private Void arrayAccessChecks(JmmNode postfixExpr, SymbolTable table) {
         var children = postfixExpr.getChildren();
         if (children.size() <= 1) return null;
+
+        JmmType baseType = TypeUtils.with(table).getExprType(postfixExpr.getChild(0));
+        if (baseType instanceof JmmClassType cls && cls.isImported()) {
+            return null;
+        }
 
         // Handle multi-dim array creation: new int[b][c][d]
         if (NEW_ARRAY_EXPR.check(children.get(0))) {

@@ -495,7 +495,11 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         code.append(NL);
         code.append(table.getClassName());
 
-
+        String superName = table.getSuperFullyQualifiedName();
+        if (superName != null && !superName.isBlank()) {
+            String simpleSuperName = superName.substring(superName.lastIndexOf('.') + 1);
+            code.append(" extends ").append(simpleSuperName);
+        }
 
         code.append(L_BRACKET);
         code.append(NL);

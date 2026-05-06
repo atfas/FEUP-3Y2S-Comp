@@ -6,11 +6,16 @@ import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmArrayType;
 import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmClassType;
 import pt.up.fe.comp.jmm.ast.AJmmVisitor;
 import pt.up.fe.comp.jmm.ast.JmmNode;
+import pt.up.fe.comp.jmm.ast.JmmNodeImpl;
+import pt.up.fe.comp.jmm.report.Report;
+import pt.up.fe.comp.jmm.report.ReportType;
+import pt.up.fe.comp.jmm.report.Stage;
 import pt.up.fe.comp2026.ast.AccessType;
 import pt.up.fe.comp2026.ast.TypeUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.LogRecord;
 import java.util.stream.Collectors;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -229,28 +234,40 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
 
 
     private OllirExprResult applyFieldAccess(OllirExprResult base, JmmNode node) {
-
-        // Field name
         String fieldName = node.get("name");
 
-        // Type of the field access expression
-        JmmType fieldType = TypeUtils.with(table)
-                .getExprType(node.getParent());
-
-        String fieldOllirType = ollirTypes.toOllirType(fieldType);
-
-        // Temporary to hold field value
-        String temp = ollirTypes.nextTemp() + fieldOllirType;
-
         StringBuilder computation = new StringBuilder();
-
-        // Compute base object first
         computation.append(base.getComputation());
 
-        // getfield instruction
+        // ---- SPECIAL CASE: array.length ----
+
+        JmmType baseType =
+                TypeUtils.with(table).getExprType(node.getParent().getChild(0));
+        if (fieldName.equals("length") && baseType.isArray()) {
+            String temp = ollirTypes.nextTemp() + ".i32";
+
+            computation.append(temp)
+                    .append(ASSIGN)
+                    .append(".i32")
+                    .append(SPACE)
+                    .append("arraylength(")
+                    .append(base.getCode())
+                    .append(")")
+                    .append(".i32")
+                    .append(END_STMT);
+
+            return new OllirExprResult(temp, computation);
+        }
+
+        // ---- NORMAL FIELD ACCESS ----
+        JmmType fieldType = TypeUtils.with(table).getExprType(node.getParent());
+        String fieldOllirType = ollirTypes.toOllirType(fieldType);
+
+        String temp = ollirTypes.nextTemp() + fieldOllirType;
+
         computation.append(temp)
                 .append(ASSIGN)
-                .append(fieldOllirType.substring(1))
+                .append(fieldOllirType)
                 .append(SPACE)
                 .append("getfield(")
                 .append(base.getCode())

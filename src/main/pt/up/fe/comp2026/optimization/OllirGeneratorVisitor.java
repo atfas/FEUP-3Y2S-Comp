@@ -62,7 +62,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         addVisit(PROGRAM, this::visitProgram);
         addVisit(PACKAGE_DECL, this::visitPackageDecl);
         addVisit(CLASS_DECL, this::visitClass);
-        //addVisit(VAR_DECL, this::simpleVarDecl);
+        addVisit(VAR_DECL, this::simpleVarDecl);
         addVisit(PARAM, this::visitParam);
         addVisit(METHOD_DECL, this::visitMethodDecl);
         addVisit(RETURN_STMT, this::visitReturn);
@@ -286,7 +286,9 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
     private String simpleVarDecl(JmmNode varDecl, Void unused) {
         StringBuilder code = new StringBuilder();
-        code.append(varDecl.get("name"));
+
+        code.append(".field ");
+        code.append(ollirTypes.sanitizeId(varDecl.get("name")));
 
         var type = ollirTypes.toOllirType(varDecl.getChild(0));
         code.append(type);
@@ -433,10 +435,10 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
         StringBuilder code = new StringBuilder(".method ");
 
-        boolean isPublic = NodeUtils.getBooleanAttribute(node, "isPublic", "false");
-
-        if (isPublic) {
-            code.append("public ");
+        // Method visibility
+        var visibility = node.getChildren(VISIBILITY_DECLARATION);
+        if (!visibility.isEmpty()) {
+            code.append(visibility.getFirst().get("visibility").toLowerCase()).append(" ");
         }
 
         if (node.getObject("isStatic", Boolean.class)) {
@@ -469,6 +471,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
                 case VISIBILITY_DECLARATION:
                 case SIMPLE_TYPE:
                 case PARAM:
+                case VAR_DECL:
                     // metadata → skip
                     break;
                 default:
@@ -496,6 +499,11 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         code.append(NL);
         code.append(NL);
 
+        for (var field : node.getChildren(VAR_DECL)) {
+            code.append(visit(field));
+        }
+
+        code.append(NL);
 
         code.append(buildConstructor());
         code.append(NL);

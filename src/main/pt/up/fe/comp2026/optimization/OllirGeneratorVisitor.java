@@ -66,11 +66,20 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         addVisit(METHOD_DECL, this::visitMethodDecl);
         addVisit(RETURN_STMT, this::visitReturn);
         addVisit(ASSIGN_STMT, this::visitAssignStmt);
+        addVisit(SIMPLE_STMT, this::visitSimpleStmt);
         addVisit(IF_STMT, this::visitIfStmt);
         addVisit(WHILE_STMT, this::visitWhileStmt);
         addVisit(DO_STMT, this::visitDoStmt);
         addVisit(FOR_STMT, this::visitForStmt);
         setDefaultVisit(this::defaultVisit);
+    }
+
+    private String visitSimpleStmt(JmmNode node, Void unused) {
+        // SIMPLE_STMT always has one child (an expression)
+        var expr = exprVisitor.visit(node.getChild(0));
+
+        // ✅ Emit computation – this is where calls, new, side effects live
+        return expr.getComputation();
     }
 
     private String indent(String code) {

@@ -1,5 +1,7 @@
 package pt.up.fe.comp2026.optimization;
 
+import pt.up.fe.comp.jmm.analysis.table.MethodSymbol;
+import pt.up.fe.comp.jmm.analysis.table.Signature;
 import pt.up.fe.comp.jmm.analysis.table.SymbolTable;
 import pt.up.fe.comp.jmm.analysis.table.type.JmmType;
 import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmArrayType;
@@ -51,6 +53,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(POSTFIX_EXPR, this::visitPostfixExpr);
         addVisit(ARRAY_EXPR, this::visitArrayExpr);
         addVisit(NEW_ARRAY_EXPR, this::visitNewArrayExpr);
+        addVisit(NEW_OBJECT_EXPR, this::visitNewObjectExpr);
         addVisit(SIZED_ARRAY_DIM, this::defaultVisitExpr);
         addVisit(NOT_EXPR, this::visitNotExpr);
 
@@ -58,6 +61,34 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(INTEGER_LITERAL, this::visitInteger);
         addVisit(TRUE_LITERAL, this::visitTrueLiteral);
         addVisit(FALSE_LITERAL, this::visitFalseLiteral);
+    }
+
+    private OllirExprResult visitNewObjectExpr(JmmNode node, Void unused) {
+
+        String className = node.get("name");
+        String type = "." + className;
+        String temp = ollirTypes.nextTemp() + type;
+
+        StringBuilder computation = new StringBuilder();
+
+        // Allocate object
+        computation.append(temp)
+                .append(" :=.")
+                .append(type.substring(1))
+                .append(" new(")
+                .append(className)
+                .append(")")
+                .append(type)
+                .append(END_STMT);
+
+        // Call constructor
+        computation.append("invokespecial(")
+                .append(temp)
+                .append(", \"<init>\")")
+                .append(".V")
+                .append(END_STMT);
+
+        return new OllirExprResult(temp, computation);
     }
 
     private OllirExprResult visitNotExpr(JmmNode node, Void unused) {
@@ -97,9 +128,28 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
             }
         }
 
-        // Determine return type of the call
-        JmmType retType = TypeUtils.with(table).getExprType(node.getParent());
+
+        JmmType baseType =
+                TypeUtils.with(table).getExprType(node.getParent().getChild(0));
+
+        List<JmmType> argumentTypes = List.of();
+        if (node.getNumChildren() == 1 && node.getChild(0).getKind().equals(EXPR_LIST)) {
+            argumentTypes = node.getChild(0).getChildren().stream()
+                    .map(arg -> TypeUtils.with(table).getExprType(arg))
+                    .toList();
+        }
+
+        List<JmmType> finalArgumentTypes = argumentTypes;
+        MethodSymbol method = table.getMethods().stream()
+                .filter(m -> m.name().equals(methodName))
+                .filter(m -> m.parameters().size() == finalArgumentTypes.size())
+                .findFirst()
+                .orElseThrow();
+
+
+        JmmType retType = method.returnType();
         String ollirRetType = ollirTypes.toOllirType(retType);
+
 
         // === VOID method ===
         if (ollirRetType.equals(".V")) {
@@ -117,7 +167,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
             computation.append(").V")
                     .append(END_STMT);
 
-            return new OllirExprResult("", computation);
+            return new OllirExprResult(base.getCode(), computation);
         }
 
         // === NON-VOID method ===
@@ -240,10 +290,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         computation.append(base.getComputation());
 
         // ---- SPECIAL CASE: array.length ----
-
-        JmmType baseType =
-                TypeUtils.with(table).getExprType(node.getParent().getChild(0));
-        if (fieldName.equals("length") && baseType.isArray()) {
+        if (fieldName.equals("length") && base.getCode().contains(".array")) {
             String temp = ollirTypes.nextTemp() + ".i32";
 
             computation.append(temp)

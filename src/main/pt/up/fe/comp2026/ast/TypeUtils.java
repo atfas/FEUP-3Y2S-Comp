@@ -10,9 +10,7 @@ import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmClassType;
 import pt.up.fe.comp.jmm.ast.JmmNode;
 import pt.up.fe.comp2026.symboltable.JmmSymbolTable;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
 
@@ -339,33 +337,108 @@ public class TypeUtils {
         List<JmmType> argTypes = new ArrayList<>();
 
         if (funcCall.getNumChildren() == 1 &&
-                funcCall.getChild(0).getKind().equals(EXPR_LIST)) {
+                EXPR_LIST.check(funcCall.getChild(0))) {
 
             for (JmmNode arg : funcCall.getChild(0).getChildren()) {
                 argTypes.add(getExprType(arg));
             }
         }
 
-        Signature signature = new Signature(methodName, argTypes);
-
-        // 1) Try current class / known hierarchy
-        var methodOpt = getMethodInHierarchy(signature);
-        if (methodOpt.isPresent()) {
-            return methodOpt.get().returnType();
+        if (!(receiverType instanceof JmmClassType cls)) {
+            throw new RuntimeException("Method call on non-class type");
         }
 
-        // 2) Try imported receiver class hierarchy
-        if (receiverType instanceof JmmClassType cls && cls.isImported()) {
-            var importedTableOpt = table.getImportedSymbolTable(cls.fullyQualifiedName());
-            if (importedTableOpt.isPresent()) {
-                return getMethodInHierarchyRecursive(importedTableOpt.get(), signature)
-                        .map(MethodSymbol::returnType)
-                        .orElseThrow(() ->
-                                new RuntimeException("Method not found in imported class: " + signature));
+        Signature signature = new Signature(methodName, argTypes);
+
+        // ✅ 1. Local class / this
+        if (!cls.isImported()) {
+            Optional<MethodSymbol> localMethod =
+                    getMethodInHierarchy(signature);
+
+            if (localMethod.isPresent()) {
+                return localMethod.get().returnType();
             }
         }
 
-        throw new RuntimeException("Method not found: " + signature);
+        // ✅ 2. Imported class
+        Optional<SymbolTable> receiverTable =
+                table.getImportedSymbolTable(cls.fullyQualifiedName());
+
+        if (receiverTable.isPresent()) {
+            for (MethodSymbol methodSymbol :
+                    receiverTable.get().getMethods(methodName)) {
+
+                if (isAssignable(signature, methodSymbol)) {
+                    return methodSymbol.returnType();
+                }
+            }
+        }
+
+        // ✅ 3. Real semantic error
+        throw new RuntimeException(
+                "Method not found: " + methodName + " with args " + argTypes
+        );
+    }
+
+    private boolean isAssignable(Signature from, MethodSymbol to) {
+
+        if (from.parameters().size() != to.parameters().size()) {
+            return false;
+        }
+
+        for (int i = 0; i < from.parameters().size(); i++) {
+            JmmType argType  = from.parameters().get(i);
+            JmmType paramType = to.signature().parameters().get(i);
+
+            if (!isAssignable(argType, paramType)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private boolean isAssignable(JmmType from, JmmType to) {
+
+        if (from.equals(to)) return true;
+
+        if (!(from instanceof JmmClassType fromCls) ||
+                !(to   instanceof JmmClassType toCls)) {
+            return false;
+        }
+
+        // Tudo é assignable para Object
+        if (toCls.name().equals("Object") ||
+                toCls.fullyQualifiedName().equals("java.lang.Object")) {
+            return true;
+        }
+
+        String current = fromCls.fullyQualifiedName();
+
+        while (current != null) {
+
+            if (current.equals(toCls.fullyQualifiedName())) {
+                return true;
+            }
+
+            // ✅ Primeiro: classe local
+            if (current.equals(table.getFullyQualifiedName())) {
+                current = table.getSuperFullyQualifiedName();
+                continue;
+            }
+
+            // ✅ Depois: classes importadas
+            Optional<SymbolTable> tableOpt =
+                    table.getImportedSymbolTable(current);
+
+            if (tableOpt.isEmpty()) {
+                break;
+            }
+
+            current = tableOpt.get().getSuperFullyQualifiedName();
+        }
+
+        return false;
     }
 
     private Optional<MethodSymbol> getMethodInHierarchy(Signature signature) {
@@ -383,15 +456,56 @@ public class TypeUtils {
         return Optional.empty();
     }
 
-    private Optional<MethodSymbol> getMethodInHierarchyRecursive(SymbolTable currentTable, Signature signature) {
-        var method = currentTable.getMethod(signature);
-        if (method.isPresent()) return method;
 
+    public Optional<MethodSymbol> getMethodInHierarchyRecursive(
+            SymbolTable currentTable,
+            Signature signature
+    ) {
+        return getMethodInHierarchyRecursive(
+                currentTable,
+                signature,
+                new HashSet<>()
+        );
+    }
+
+    private Optional<MethodSymbol> getMethodInHierarchyRecursive(
+            SymbolTable currentTable,
+            Signature signature,
+            Set<String> visited
+    ) {
+        // Prevent infinite loops in cyclic hierarchies
+        String currentClass = currentTable.getFullyQualifiedName();
+        if (!visited.add(currentClass)) {
+            return Optional.empty();
+        }
+
+        // 1. Look in the current class
+        Optional<MethodSymbol> method = currentTable.getMethod(signature);
+        if (method.isPresent()) {
+            return method;
+        }
+
+        // Resolver must live at the root symbol table
+        if (!(currentTable instanceof JmmSymbolTable resolver)) {
+            return Optional.empty();
+        }
+
+        // 2. Search superclass
         String superName = currentTable.getSuperFullyQualifiedName();
-        if (superName != null && !superName.isEmpty() && currentTable instanceof JmmSymbolTable jmmTable) {
-            var superTableOpt = jmmTable.getImportedSymbolTable(superName);
-            if (superTableOpt.isPresent()) {
-                return getMethodInHierarchyRecursive(superTableOpt.get(), signature);
+        if (superName != null && !superName.isEmpty()) {
+            Optional<SymbolTable> superTable =
+                    resolver.getImportedSymbolTable(superName);
+
+            if (superTable.isPresent()) {
+                Optional<MethodSymbol> superResult =
+                        getMethodInHierarchyRecursive(
+                                superTable.get(),
+                                signature,
+                                visited
+                        );
+                if (superResult.isPresent()) {
+                    return superResult;
+                }
             }
         }
 

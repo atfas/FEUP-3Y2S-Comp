@@ -96,11 +96,10 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
                     ? arrayType.itemType()
                     : JmmArrayType.of(arrayType.itemType(), remaining);
         }
-
         if (!isValidAssign(varType, assignType)){
             addReport(newError(
                     assign,
-                    "Assign type must be the same as the variable type"
+                    "Assign type: " + assignType + " must be the same as the variable type: " + varType
             ));
         }
         return null;

@@ -115,10 +115,6 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
     private Void arrayAssignChecks(JmmNode varAssign, SymbolTable table) {
         JmmNode rhsExpr = varAssign.getChild(0);
 
-        if (isImportedMethodCall(rhsExpr, table)) {
-            return null;
-        }
-
         var methodNode = varAssign.getAncestor(METHOD_DECL).orElseThrow();
         var signature = TypeUtils.with(table).getMethodDeclSignature(methodNode);
         var method = table.getMethod(signature).orElseThrow();
@@ -131,6 +127,8 @@ public class ArrayVisitor extends AnalysisVisitorWithTable {
         }
 
         var assignType = TypeUtils.with(table).getExprType(varAssign.getChild(0));
+
+        if (assignType == null) return null;
         System.out.println("varType: " + varType + " dim=" + (varType instanceof JmmArrayType at ? at.dimension() : "N/A"));
         System.out.println("assignType: " + assignType + " dim=" + (assignType instanceof JmmArrayType at ? at.dimension() : "N/A"));
         if (varType.isArray() && !assignType.isArray()) {

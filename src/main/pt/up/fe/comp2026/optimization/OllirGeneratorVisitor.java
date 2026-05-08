@@ -19,6 +19,7 @@ import pt.up.fe.specs.util.utilities.StringLines;
 
 import java.lang.ref.SoftReference;
 import java.sql.Struct;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
@@ -480,6 +481,12 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         }
 
         code.append(NL);
+
+        if (retType.equals(".V")){
+            code.append("ret.V");
+            code.append(END_STMT);
+        }
+
         code.append(R_BRACKET);
         code.append(NL);
 

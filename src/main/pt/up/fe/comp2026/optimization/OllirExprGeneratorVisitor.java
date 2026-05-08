@@ -49,6 +49,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(NEW_OBJECT_EXPR, this::visitNewObjectExpr);
         addVisit(SIZED_ARRAY_DIM, this::defaultVisitExpr);
         addVisit(NOT_EXPR, this::visitNotExpr);
+        addVisit(UNARY_EXPR, this::visitUnaryExpr);
 
         addVisit(THIS_LITERAL, this::visitThisLiteral);
         addVisit(INTEGER_LITERAL, this::visitInteger);
@@ -699,4 +700,89 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
 
         return new OllirExprResult(temp, computation);
     }
+
+    private OllirExprResult visitUnaryExpr(JmmNode node, Void unused) {
+        StringBuilder computation = new StringBuilder();
+        var operand = visit(node.getChild(0));
+
+        var exprType = TypeUtils.with(table).getExprType(node);
+        var ollirType = ollirTypes.toOllirType(exprType);
+
+        computation.append(operand.getComputation());
+
+        String code;
+
+        switch (node.get("op")) {
+            case "+": {
+                code = operand.getCode();
+                break;
+            }
+
+            case "-": {
+                var temp = ollirTypes.nextTemp() + ollirType;
+
+                computation.append(temp)
+                        .append(ASSIGN)
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append("0")
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append("-")
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append(operand.getCode())
+                        .append(END_STMT);
+
+                code = temp;
+                break;
+            }
+
+            case "++": {
+                var temp = ollirTypes.nextTemp() + ollirType;
+
+                computation.append(temp)
+                        .append(ASSIGN)
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append(operand.getCode())
+                        .append(SPACE)
+                        .append("+")
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append("1")
+                        .append(ollirType)
+                        .append(END_STMT);
+
+                code = temp;
+                break;
+            }
+
+            case "--": {
+                var temp = ollirTypes.nextTemp() + ollirType;
+
+                computation.append(temp)
+                        .append(ASSIGN)
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append(operand.getCode())
+                        .append(SPACE)
+                        .append("-")
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append("1")
+                        .append(ollirType)
+                        .append(END_STMT);
+
+                code = temp;
+                break;
+            }
+
+            default:
+                throw new RuntimeException("Unsupported unary operator: " + node.get("op"));
+        }
+
+        return new OllirExprResult(code, computation);
+    }
+
 }

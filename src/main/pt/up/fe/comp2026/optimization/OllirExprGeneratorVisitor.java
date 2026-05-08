@@ -70,8 +70,19 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         String temp = ollirTypes.nextTemp() + type;
 
         StringBuilder computation = new StringBuilder();
+        List<OllirExprResult> args = new ArrayList<>();
 
-        // Allocate object
+        if (node.hasAttribute("name")
+                && node.getNumChildren() == 1
+                && node.getChild(0).getKind().equals(EXPR_LIST)) {
+
+            for (var argNode : node.getChild(0).getChildren()) {
+                var arg = visit(argNode);
+                args.add(arg);
+                computation.append(arg.getComputation());
+            }
+        }
+
         computation.append(temp)
                 .append(" :=.")
                 .append(type.substring(1))
@@ -81,15 +92,20 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
                 .append(type)
                 .append(END_STMT);
 
-        // Call constructor
         computation.append("invokespecial(")
                 .append(temp)
-                .append(", \"<init>\")")
-                .append(".V")
+                .append(", \"<init>\"");
+
+        for (var arg : args) {
+            computation.append(", ").append(arg.getCode());
+        }
+
+        computation.append(").V")
                 .append(END_STMT);
 
         return new OllirExprResult(temp, computation);
     }
+
 
     private OllirExprResult visitNotExpr(JmmNode node, Void unused) {
 

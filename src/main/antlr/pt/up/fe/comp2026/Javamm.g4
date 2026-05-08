@@ -146,10 +146,7 @@ exprList
 
 expr
     : NOT expr #NotExpr
-    | '++' expr #UnaryExpr
-    | '--' expr #UnaryExpr
-    | '+' expr #UnaryExpr
-    | '-' expr #UnaryExpr
+    | op=('++' | '--' | '+' | '-') expr #UnaryExpr
     | expr op=('*'|'/'|'%') expr #BinaryExpr
     | expr op=('+'|'-') expr #BinaryExpr
     | expr op=('<'|'>'|'<='|'>=') expr #BinaryExpr

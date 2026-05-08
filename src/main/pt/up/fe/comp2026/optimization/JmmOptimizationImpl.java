@@ -5,6 +5,7 @@ import pt.up.fe.comp.jmm.ast.JmmNode;
 import pt.up.fe.comp.jmm.ast.PostorderJmmVisitor;
 import pt.up.fe.comp.jmm.ollir.JmmOptimization;
 import pt.up.fe.comp.jmm.ollir.OllirResult;
+import pt.up.fe.comp2026.CompilerConfig;
 
 
 import java.util.Collections;
@@ -22,8 +23,9 @@ public class JmmOptimizationImpl implements JmmOptimization {
         var ollirCode = visitor.visit(semanticsResult.getRootNode());
 
 //        System.out.println("\nOLLIR:\n\n" + ollirCode);
-
-        return new OllirResult(semanticsResult, ollirCode, Collections.emptyList());
+        OllirResult ollirResult = new OllirResult(semanticsResult, ollirCode, Collections.emptyList());
+        return optimize(ollirResult);
+        //return ollirResult;
     }
 
     @Override
@@ -43,6 +45,10 @@ public class JmmOptimizationImpl implements JmmOptimization {
             System.out.println("OLLIR CODE:");
             System.out.println(ollirResult.getOllirCode());
         }
+
+        // Regster Allocation
+        int reg = CompilerConfig.getRegisterAllocation(ollirResult.config());
+        ollirResult = new OllirOptimizationImpl(reg).optimizeRegisterAllocation(ollirResult);
 
         //TODO: Do your OLLIR-based optimizations here
 

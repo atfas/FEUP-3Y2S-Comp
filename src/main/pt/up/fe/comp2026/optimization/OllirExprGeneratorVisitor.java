@@ -50,12 +50,86 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(SIZED_ARRAY_DIM, this::defaultVisitExpr);
         addVisit(NOT_EXPR, this::visitNotExpr);
         addVisit(UNARY_EXPR, this::visitUnaryExpr);
+        addVisit(CALL_EXPR, this::visitCallExpr);
 
         addVisit(THIS_LITERAL, this::visitThisLiteral);
         addVisit(INTEGER_LITERAL, this::visitInteger);
         addVisit(TRUE_LITERAL, this::visitTrueLiteral);
         addVisit(FALSE_LITERAL, this::visitFalseLiteral);
         addVisit(NEW_ARRAY_LITERAL_EXPR, this::visitNewArrayLiteral);
+    }
+
+    private OllirExprResult visitCallExpr(JmmNode node, Void unused) {
+
+        String methodName = node.get("name");
+
+        StringBuilder computation = new StringBuilder();
+
+        // collect args
+        List<OllirExprResult> args = new ArrayList<>();
+
+        if (node.getNumChildren() == 1
+                && node.getChild(0).getKind().equals(EXPR_LIST)) {
+
+            for (var argNode : node.getChild(0).getChildren()) {
+                var arg = visit(argNode);
+                args.add(arg);
+                computation.append(arg.getComputation());
+            }
+        }
+
+        // infer return type
+        String ollirRetType =
+                ollirTypes.toOllirType(
+                        TypeUtils.with(table).getExprType(node)
+                );
+
+        // ---- VOID CALL ----
+        if (ollirRetType.equals(".V")) {
+
+            computation.append("invokevirtual(")
+                    .append("this.")
+                    .append(table.getClassName())
+                    .append(", \"")
+                    .append(methodName)
+                    .append("\"");
+
+            for (var arg : args) {
+                computation.append(", ")
+                        .append(arg.getCode());
+            }
+
+            computation.append(").V")
+                    .append(END_STMT);
+
+            return new OllirExprResult("", computation);
+        }
+
+        // ---- NON-VOID CALL ----
+        String temp =
+                ollirTypes.nextTemp() + ollirRetType;
+
+        computation.append(temp)
+                .append(ASSIGN)
+                .append(ollirRetType)
+                .append(SPACE)
+                .append("invokevirtual(")
+                .append("this.")
+                .append(table.getClassName())
+                .append(", \"")
+                .append(methodName)
+                .append("\"");
+
+        for (var arg : args) {
+            computation.append(", ")
+                    .append(arg.getCode());
+        }
+
+        computation.append(")")
+                .append(ollirRetType)
+                .append(END_STMT);
+
+        return new OllirExprResult(temp, computation);
     }
 
     private OllirExprResult visitNewObjectExpr(JmmNode node, Void unused) {

@@ -75,6 +75,81 @@
 				"$tsc"
 			],
 			"group": "test"
+		},
+		{
+			"label": "test-instantiate-javalang-with-args",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.calls.InstantiateJavaLangWithArgsTest.testInstantiateJavaLangWithArgs"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-instantiate-javalang-with-args",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.calls.NewWithArgsOllirTest.testInstantiateJavaLangWithArgs"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-new-with-args",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.calls.NewWithArgsOllirTest.testInstantiateJavaLangWithArgs"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-local-static-method-call",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.calls.LocalStaticMethodCallExprStmtRetIntTest.testLocalStaticMethodCallExprStmtRetInt"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-local-static-call",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.calls.LocalStaticMethodOllirTest.LocalStaticMethodCallExprStmtRetInt"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
 		}
 	]
 }

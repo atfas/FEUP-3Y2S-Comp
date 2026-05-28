@@ -222,7 +222,12 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
                                                 imp.endsWith("." + baseNode.get("name"))
                                 );
 
-        if (isStaticImportedCall) {
+        boolean isStaticLocalCall =
+            baseNode.getKind().equals(VAR_REF_EXPR) &&
+                (baseNode.get("name").equals(table.getClassName()) ||
+                    baseNode.get("name").equals(table.getFullyQualifiedName()));
+
+        if (isStaticImportedCall || isStaticLocalCall) {
             return emitInvokeStatic(node, methodName, ollirRetType, args);
         }
 

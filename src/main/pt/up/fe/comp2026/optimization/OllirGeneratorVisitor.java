@@ -298,6 +298,48 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         return code.toString();
     }
 
+    private String generateFieldInitializers(JmmNode classDecl) {
+        StringBuilder code = new StringBuilder();
+
+        for (JmmNode child : classDecl.getChildren(VAR_DECL)) {
+
+            // no initializer
+            if (child.getNumChildren() < 2) {
+                continue;
+            }
+
+            String fieldName =
+                    ollirTypes.sanitizeId(child.get("name"));
+
+            JmmType fieldType =
+                    table.getField(child.get("name"))
+                            .orElseThrow()
+                            .type();
+
+            String ollirType =
+                    ollirTypes.toOllirType(fieldType);
+
+            // full expression node
+            JmmNode exprNode = child.getChild(1);
+
+            var expr = exprVisitor.visit(exprNode);
+
+            // temporaries / invokes / computations
+            code.append(expr.getComputation());
+
+            // putfield(this, field, expr)
+            code.append("putfield(this, ");
+            code.append(fieldName);
+            code.append(ollirType);
+            code.append(", ");
+            code.append(expr.getCode());
+            code.append(").V");
+            code.append(END_STMT);
+        }
+
+        return code.toString();
+    }
+
 
     private String visitParam(JmmNode param, Void unused) {
 
@@ -518,7 +560,7 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
 
         code.append(NL);
 
-        code.append(buildConstructor());
+        code.append(buildConstructor(node));
         code.append(NL);
 
         for (var child : node.getChildren(METHOD_DECL)) {
@@ -531,20 +573,35 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         return code.toString();
     }
 
-    private String buildConstructor() {
+    private String buildConstructor(JmmNode classDecl) {
         String superName = table.getSuperFullyQualifiedName();
 
         if (superName == null || superName.isBlank()) {
             superName = "Object";
         } else {
-            superName = superName.substring(superName.lastIndexOf('.') + 1);
+            superName =
+                    superName.substring(superName.lastIndexOf('.') + 1);
         }
 
-        return """
-            .construct "<init>"().V {
-                invokespecial(this.%s, "<init>").V;
-            }
-            """.formatted(superName);
+        StringBuilder code = new StringBuilder();
+
+        code.append(".construct \"<init>\"().V {\n");
+
+        code.append("    invokespecial(this.")
+                .append(superName)
+                .append(", \"<init>\").V;\n");
+
+        // <-- THIS WAS MISSING
+        String fieldInit =
+                generateFieldInitializers(classDecl);
+
+        if (!fieldInit.isBlank()) {
+            code.append(indent(fieldInit));
+        }
+
+        code.append("}\n");
+
+        return code.toString();
     }
 
     private String visitProgram(JmmNode node, Void unused) {

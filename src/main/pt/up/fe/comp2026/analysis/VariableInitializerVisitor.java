@@ -76,7 +76,8 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
     }
 
     private Void varAssign(JmmNode assign, SymbolTable table){
-        JmmNode rhsExpr = assign.getChild(0);
+        int lastChildIndex = assign.getNumChildren() - 1;
+        JmmNode rhsExpr = assign.getChild(lastChildIndex);
 
         if (isImportedMethodCall(rhsExpr, table)) {
             return null;
@@ -84,18 +85,36 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
 
         var varType = TypeUtils.with(table).getVarType(assign.get("var"), currentMethod);
 
-        // If this is an array element assignment (arr[i] = val), the RHS is the last child.
-        var assignType = TypeUtils.with(table).getExprType(assign.getChild(0));
-        if (assign.getNumChildren() > 1) {
-            assignType = TypeUtils.with(table).getExprType(assign.getChild(assign.getNumChildren() - 1));
+        int indexCount = lastChildIndex;
+        var assignType = TypeUtils.with(table).getExprType(rhsExpr);
+
+        if (indexCount > 0) {
+            for (int i = 0; i < indexCount; i++) {
+                JmmNode indexExpr = assign.getChild(i);
+                var indexType = TypeUtils.with(table).getExprType(indexExpr);
+
+                if (!indexType.equals(TypeUtils.intType())) {
+                    addReport(newError(
+                            indexExpr,
+                            "Array index must be of type int, got: " + indexType
+                    ));
+                }
+
+                if (varType instanceof JmmArrayType arrayType) {
+                    int remaining = arrayType.dimension() - 1;
+                    varType = remaining <= 0
+                            ? arrayType.itemType()
+                            : JmmArrayType.of(arrayType.itemType(), remaining);
+                } else {
+                    addReport(newError(
+                            assign,
+                            "Array access must be done on an array"
+                    ));
+                    return null;
+                }
+            }
         }
 
-        if (assign.getNumChildren() > 1 && varType instanceof JmmArrayType arrayType) {
-            int remaining = arrayType.dimension() - 1;
-            varType = remaining <= 0
-                    ? arrayType.itemType()
-                    : JmmArrayType.of(arrayType.itemType(), remaining);
-        }
         if (!isValidAssign(varType, assignType)){
             addReport(newError(
                     assign,

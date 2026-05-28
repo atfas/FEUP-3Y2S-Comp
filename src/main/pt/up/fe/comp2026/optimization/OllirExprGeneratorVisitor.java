@@ -432,9 +432,22 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         var arrayTemp = ollirTypes.nextTemp();
         var type = ollirTypes.toOllirType(node.getChild(0));
 
-        var size = visit(node.getChild(1));
+        List<OllirExprResult> sizes = new ArrayList<>();
 
-        computation.append(size.getComputation());
+        var arrayTypeNodes = node.getChildren(ARRAY_TYPE);
+        if (!arrayTypeNodes.isEmpty()) {
+            arrayTypeNodes.getFirst().getChildren().stream()
+                .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                .forEach(dim -> sizes.add(visit(dim.getChild(0))));
+        }
+
+        node.getChildren().stream()
+            .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+            .forEach(dim -> sizes.add(visit(dim.getChild(0))));
+
+        for (var size : sizes) {
+            computation.append(size.getComputation());
+        }
 
         computation.append(arrayTemp)
                 .append(".array")
@@ -444,7 +457,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
                 .append(type)
                 .append(SPACE)
                 .append("new(array, ")
-                .append(size.getCode())
+            .append(sizes.stream().map(OllirExprResult::getCode).reduce((a, b) -> a + ", " + b).orElse("") )
                 .append(").array")
                 .append(type)
                 .append(END_STMT);

@@ -1,0 +1,80 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "test-multidimensional-access",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.arrays.MultidimensionalArraysOllirTest.testMultidimensionalAccess"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-multidimensional-access",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.arrays.MultidimensionalArraysOllirTest.testMultidimensionalAccess"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-multidimensional-access",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.arrays.MultidimensionalArraysOllirTest.testMultidimensionalAccess"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-multidimensional-init",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.extensions.ollir.arrays.MultidimensionalArraysOllirTest.testMultidimensionalInit"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-multidimensional-array-semantics",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp1.extensions.semantics.arrays.MultidimensionalArraySemanticAnalysisTest"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		}
+	]
+}

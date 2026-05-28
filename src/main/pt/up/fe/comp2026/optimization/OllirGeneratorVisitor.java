@@ -362,31 +362,60 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         StringBuilder code = new StringBuilder();
 
         // RHS expression
+        String varName = node.get(JmmAttributes.ASSIGN_STMT.VAR);
         var rhs = exprVisitor.visit(node.getChildren().getLast());
         code.append(rhs.getComputation());
-
-        String varName = node.get(JmmAttributes.ASSIGN_STMT.VAR);
 
         // --- Case 1: array element assignment (a[i] = value) ---
         if (node.getChildren().size() > 1) {
 
-            var indexExpr = exprVisitor.visit(node.getChild(0));
-            code.append(indexExpr.getComputation());
+            JmmType currentType = types.getVarType(varName, currentMethod);
+            String currentBase = ollirTypes.sanitizeId(varName) + ollirTypes.toOllirType(currentType);
 
-            JmmType arrayType =
-                    types.getVarType(varName, currentMethod);
+            int indexCount = node.getChildren().size() - 1;
 
-            String elemType =
-                    ollirTypes.toOllirType(arrayType.asArray().itemType());
+            for (int i = 0; i < indexCount - 1; i++) {
+                var indexExpr = exprVisitor.visit(node.getChild(i));
+                code.append(indexExpr.getComputation());
 
-            code.append(ollirTypes.sanitizeId(varName))
-                    .append(ollirTypes.toOllirType(arrayType))
+                JmmType nextType = currentType.asArray().dimension() == 1
+                        ? currentType.asArray().itemType()
+                        : JmmArrayType.of(
+                                currentType.asArray().itemType(),
+                                currentType.asArray().dimension() - 1
+                        );
+
+                String nextOllirType = ollirTypes.toOllirType(nextType);
+                String temp = ollirTypes.nextTemp() + nextOllirType;
+
+                code.append(temp)
+                        .append(ASSIGN)
+                        .append(nextOllirType)
+                        .append(SPACE)
+                        .append(currentBase)
+                        .append("[")
+                        .append(indexExpr.getCode())
+                        .append("]")
+                        .append(nextOllirType)
+                        .append(END_STMT);
+
+                currentBase = temp;
+                currentType = nextType;
+            }
+
+            var lastIndexExpr = exprVisitor.visit(node.getChild(indexCount - 1));
+            code.append(lastIndexExpr.getComputation());
+
+            JmmType finalType = currentType.asArray().itemType();
+            String finalOllirType = ollirTypes.toOllirType(finalType);
+
+            code.append(currentBase)
                     .append("[")
-                    .append(indexExpr.getCode())
+                    .append(lastIndexExpr.getCode())
                     .append("]")
-                    .append(elemType)
+                    .append(finalOllirType)
                     .append(" :=.")
-                    .append(elemType.substring(1))
+                    .append(finalOllirType.substring(1))
                     .append(" ")
                     .append(rhs.getCode())
                     .append(END_STMT);

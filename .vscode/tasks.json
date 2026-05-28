@@ -150,6 +150,76 @@
 				"$tsc"
 			],
 			"group": "test"
+		},
+		{
+			"label": "test-imported-object-arg",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.core.ollir.calls.ImportedClassesCallWithArgExpectingObjectTest"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-imported-object-arg",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.core.ollir.calls.ImportedClassesCallWithArgExpectingObjectTest"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-imported-object-arg",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.core.ollir.calls.ImportedClassesCallWithArgExpectingObjectTest"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "test-imported-object-arg",
+			"type": "shell",
+			"command": "./gradlew",
+			"args": [
+				"test",
+				"--tests",
+				"pt.up.fe.comp.cp2.core.ollir.calls.ImportedClassesOllirTest.ImportedClassesCallWithArgExpectingObject"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
+		},
+		{
+			"label": "validate-imported-object-arg-suite",
+			"type": "shell",
+			"command": "./gradlew test --tests pt.up.fe.comp.cp2.core.ollir.calls.ImportedClassesOllirTest",
+			"isBackground": false,
+			"problemMatcher": [
+				"$tsc"
+			],
+			"group": "test"
 		}
 	]
 }

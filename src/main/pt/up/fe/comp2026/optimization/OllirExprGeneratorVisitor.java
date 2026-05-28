@@ -8,6 +8,7 @@ import pt.up.fe.comp.jmm.analysis.table.type.impls.JmmClassType;
 import pt.up.fe.comp.jmm.ast.AJmmVisitor;
 import pt.up.fe.comp.jmm.ast.JmmNode;
 import pt.up.fe.comp2026.ast.TypeUtils;
+import pt.up.fe.comp2026.symboltable.JmmSymbolTable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -231,8 +232,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
             return emitInvokeStatic(node, methodName, ollirRetType, args);
         }
 
-
-        return emitInvokeVirtual(base, methodName, ollirRetType, args);
+        return emitInvokeVirtual(base, node, methodName, ollirRetType, args);
     }
 
     private OllirExprResult emitInvokeStatic(
@@ -345,11 +345,38 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
 
     private OllirExprResult emitInvokeVirtual(
             OllirExprResult base,
+            JmmNode node,
             String methodName,
             String ollirRetType,
             List<OllirExprResult> args
     ) {
         StringBuilder computation = new StringBuilder();
+
+        JmmType receiverType = TypeUtils.with(table).getExprType(node.getParent().getChild(0));
+        if (receiverType instanceof JmmClassType classType && classType.isImported()) {
+            var symbolTable = (JmmSymbolTable) table;
+            final int argCount = args.size();
+            var importedTableOpt = symbolTable.getImportedSymbolTable(classType.name())
+                .or(() -> symbolTable.getImportedSymbolTable(classType.fullyQualifiedName()));
+
+            if (importedTableOpt.isPresent()) {
+                var matchingMethod = importedTableOpt.get().getMethods(methodName).stream()
+                .filter(method -> method.parameters().size() == argCount)
+                        .findFirst();
+
+                if (matchingMethod.isPresent()) {
+                    var expectedTypes = matchingMethod.get().parameters().stream()
+                            .map(parameter -> parameter.type())
+                            .toList();
+
+                    List<OllirExprResult> coercedArgs = new ArrayList<>();
+                    for (int i = 0; i < args.size(); i++) {
+                        coercedArgs.add(coerceArgToType(args.get(i), expectedTypes.get(i)));
+                    }
+                    args = coercedArgs;
+                }
+            }
+        }
 
         // Include base and argument computations
         computation.append(base.getComputation());
@@ -395,6 +422,26 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
 
         computation.append(")")
                 .append(ollirRetType)
+                .append(END_STMT);
+
+        return new OllirExprResult(temp, computation);
+    }
+
+    private OllirExprResult coerceArgToType(OllirExprResult arg, JmmType targetType) {
+        String targetOllirType = ollirTypes.toOllirType(targetType);
+
+        if (arg.getCode().endsWith(targetOllirType)) {
+            return arg;
+        }
+
+        String temp = ollirTypes.nextTemp() + targetOllirType;
+        StringBuilder computation = new StringBuilder(arg.getComputation());
+
+        computation.append(temp)
+                .append(ASSIGN)
+                .append(targetOllirType)
+                .append(SPACE)
+                .append(arg.getCode())
                 .append(END_STMT);
 
         return new OllirExprResult(temp, computation);

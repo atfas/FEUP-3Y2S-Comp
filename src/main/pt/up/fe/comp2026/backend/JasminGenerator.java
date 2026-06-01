@@ -6,6 +6,8 @@ import org.specs.comp.ollir.tree.TreeNode;
 import org.specs.comp.ollir.type.ArrayType;
 import org.specs.comp.ollir.type.BuiltinKind;
 import org.specs.comp.ollir.type.BuiltinType;
+import org.specs.comp.ollir.type.ClassType;
+import org.specs.comp.ollir.type.Type;
 import pt.up.fe.comp.jmm.ollir.OllirResult;
 import pt.up.fe.comp.jmm.report.Report;
 import pt.up.fe.comp2026.optimization.OptUtils;
@@ -45,6 +47,7 @@ public class JasminGenerator {
 
     private int currentStack;
     private int maxStack;
+    private int labelCounter;
 
     public JasminGenerator(OllirResult ollirResult) {
         this.ollirResult = ollirResult;
@@ -71,6 +74,16 @@ public class JasminGenerator {
         generators.put(InvokeVirtualInstruction.class, this::generateInvokeVirtual);
         //generators.put(InvokeStaticInstruction.class, this::generateInvokeStatic);
         //generators.put(InvokeSpecialInstruction.class, this::generateInvokeSpecial);
+
+        // Arrays
+        generators.put(NewInstruction.class, this::generateNew);
+        generators.put(ArrayLengthInstruction.class, this::generateArrayLength);
+        generators.put(ArrayOperand.class, this::generateArrayLoad);
+
+        // Control flow
+        generators.put(GotoInstruction.class, this::generateGoto);
+        generators.put(SingleOpCondInstruction.class, this::generateSingleOpCond);
+        generators.put(OpCondInstruction.class, this::generateOpCond);
     }
 
     private int computeLocals(Method method) {
@@ -104,7 +117,9 @@ public class JasminGenerator {
         }
 
         // owner class
-        String className = types.getFullClassName(invoke.getCaller().getType().getNodeName());
+        var callerType = invoke.getCaller().getType();
+        String callerClassName = (callerType instanceof ClassType ct) ? ct.getName() : callerType.getNodeName();
+        String className = types.getFullClassName(callerClassName);
 
         // method name
         String methodName =
@@ -217,6 +232,7 @@ public class JasminGenerator {
 
         currentStack = 0;
         maxStack = 0;
+        labelCounter = 0;
 
         // Initialize utils, to have fresh labels
         utils = new OptUtils(null);
@@ -244,6 +260,13 @@ public class JasminGenerator {
 
         var bodyCode = new StringBuilder();
         for (var inst : method.getInstructions()) {
+            // Emit any labels attached to this instruction
+            var labels = method.getLabels(inst);
+            if (labels != null) {
+                for (var label : labels) {
+                    bodyCode.append(label).append(":").append(NL);
+                }
+            }
             var instCode = StringLines.getLines(apply(inst)).stream()
                     .collect(Collectors.joining(NL + TAB, TAB, NL));
 
@@ -268,21 +291,31 @@ public class JasminGenerator {
         try {
             isInsideAssignment = true;
 
-
             var code = new StringBuilder();
-
-            // store value in the stack in destination
             var lhs = assign.getDest();
 
-            // generate code for loading what's on the right
+            // Array store: arr[idx] := value
+            if (lhs instanceof ArrayOperand arrayOp) {
+                var reg = currentMethod.getVarTable().get(arrayOp.getName());
+                // load array reference
+                code.append(types.getLoad(reg)).append(NL);
+                updateStack(1);
+                // load index
+                for (var idx : arrayOp.getIndexOperands()) {
+                    code.append(apply(idx));
+                }
+                // load value
+                code.append(apply(assign.getRhs()));
+                // store into array
+                code.append("iastore").append(NL);
+                updateStack(-3);
+                return code.toString();
+            }
+
+            // Regular variable store
             code.append(apply(assign.getRhs()));
 
-
-            // Assume Operand
             var operand = (Operand) lhs;
-
-
-            // get register
             var reg = currentMethod.getVarTable().get(operand.getName());
 
             code.append(types.getStore(reg)).append(NL);
@@ -300,6 +333,12 @@ public class JasminGenerator {
 
     private String generateLiteral(LiteralElement literal) {
         updateStack(1);
+        try {
+            int val = Integer.parseInt(literal.getLiteral());
+            if (val >= -1 && val <= 5) return "iconst_" + val + NL;
+            if (val >= -128 && val <= 127) return "bipush " + val + NL;
+            if (val >= -32768 && val <= 32767) return "sipush " + val + NL;
+        } catch (NumberFormatException ignored) {}
         return "ldc " + literal.getLiteral() + NL;
     }
 
@@ -322,14 +361,42 @@ public class JasminGenerator {
 
         var typePrefix = types.getTypePrefix(binaryOp.getOperation().getTypeInfo());
 
-        // apply operation
-        var op = switch (binaryOp.getOperation().getOpType()) {
+        var opType = binaryOp.getOperation().getOpType();
+
+        // Boolean comparison ops: generate iconst_0/1 via branch
+        String cmpBranch = switch (opType) {
+            case LTH -> "if_icmplt";
+            case LTE -> "if_icmple";
+            case GTH -> "if_icmpgt";
+            case GTE -> "if_icmpge";
+            case EQ  -> "if_icmpeq";
+            case NEQ -> "if_icmpne";
+            default  -> null;
+        };
+
+        if (cmpBranch != null) {
+            // Consumed both operands (-2), then push result (1) → net -1
+            String lTrue = nextLabel();
+            String lEnd  = nextLabel();
+            code.append(cmpBranch).append(" ").append(lTrue).append(NL);
+            code.append("iconst_0").append(NL);
+            code.append("goto ").append(lEnd).append(NL);
+            code.append(lTrue).append(":").append(NL);
+            code.append("iconst_1").append(NL);
+            code.append(lEnd).append(":").append(NL);
+            updateStack(-1); // -2 (operands) +1 (result)
+            return code.toString();
+        }
+
+        // apply arithmetic operation
+        var op = switch (opType) {
             case ADD -> "add";
             case MUL -> "mul";
             case SUB -> "sub";
             case DIV -> "div";
-
-            default -> throw new NotImplementedException(binaryOp.getOperation().getOpType());
+            case BITWISE_AND -> "and";
+            case BITWISE_OR  -> "or";
+            default -> throw new NotImplementedException(opType);
         };
 
         code.append(typePrefix + op).append(NL);
@@ -350,11 +417,107 @@ public class JasminGenerator {
 
         code.append(typePrefix).append("return").append(NL);
 
-        returnInst.getOperand().ifPresent(op -> {
-            code.append(apply(op));
-            updateStack(-1);
-        });
+        return code.toString();
+    }
 
+    private String generateNew(NewInstruction newInst) {
+        var code = new StringBuilder();
+
+        var retType = newInst.getReturnType();
+
+        if (retType instanceof ArrayType arrayType) {
+            // Push the size argument
+            var args = newInst.getArguments();
+            // args[0] is the size
+            code.append(apply(args.get(0)));
+            // Determine element type string
+            String elemTypeStr = getArrayElementTypeName(arrayType.getElementType());
+            code.append("newarray ").append(elemTypeStr).append(NL);
+            // net stack effect: consumed size (+1 already counted in apply), pushed array ref → 0 net extra
+            updateStack(-1); // size consumed, array ref pushed: apply already counted +1, so net 0, remove the extra
+            updateStack(1);  // array ref
+        } else {
+            // Object instantiation (not needed for arrays tests but keep for completeness)
+            String className = types.getFullClassName(retType.getNodeName());
+            code.append("new ").append(className).append(NL);
+            updateStack(1);
+        }
+
+        return code.toString();
+    }
+
+    private String getArrayElementTypeName(Type elemType) {
+        if (elemType instanceof BuiltinType bt) {
+            return switch (bt.getKind()) {
+                case INT32 -> "int";
+                case BOOLEAN -> "boolean";
+                default -> "int";
+            };
+        }
+        return "int";
+    }
+
+    private String generateArrayLength(ArrayLengthInstruction inst) {
+        var code = new StringBuilder();
+        // load array reference
+        code.append(apply(inst.getCaller()));
+        code.append("arraylength").append(NL);
+        // net: consumed array ref, pushed length → 0 net (apply already +1, arraylength -1+1=0)
+        return code.toString();
+    }
+
+    private String generateArrayLoad(ArrayOperand arrayOp) {
+        var code = new StringBuilder();
+        var reg = currentMethod.getVarTable().get(arrayOp.getName());
+        // load array reference
+        code.append(types.getLoad(reg)).append(NL);
+        updateStack(1);
+        // load index
+        for (var idx : arrayOp.getIndexOperands()) {
+            code.append(apply(idx));
+        }
+        // load element
+        code.append("iaload").append(NL);
+        updateStack(-1); // consumed array ref + index, pushed element
+        return code.toString();
+    }
+
+    private String nextLabel() {
+        return "_jg_" + (labelCounter++);
+    }
+
+    private String generateGoto(GotoInstruction inst) {
+        return "goto " + inst.getLabel() + NL;
+    }
+
+    private String generateSingleOpCond(SingleOpCondInstruction inst) {
+        var code = new StringBuilder();
+        // Load the boolean operand
+        code.append(apply(inst.getCondition().getSingleOperand()));
+        // Branch if non-zero
+        code.append("ifne ").append(inst.getLabel()).append(NL);
+        updateStack(-1);
+        return code.toString();
+    }
+
+    private String generateOpCond(OpCondInstruction inst) {
+        var code = new StringBuilder();
+        var binaryOp = (BinaryOpInstruction) inst.getCondition();
+        // Load operands
+        code.append(apply(binaryOp.getLeftOperand()));
+        code.append(apply(binaryOp.getRightOperand()));
+        // Direct comparison branch
+        var branch = switch (binaryOp.getOperation().getOpType()) {
+            case LTH -> "if_icmplt";
+            case LTE -> "if_icmple";
+            case GTH -> "if_icmpgt";
+            case GTE -> "if_icmpge";
+            case EQ  -> "if_icmpeq";
+            case NEQ -> "if_icmpne";
+            default  -> throw new NotImplementedException(binaryOp.getOperation().getOpType());
+        };
+        code.append(branch).append(" ").append(inst.getLabel()).append(NL);
+        updateStack(-2);
         return code.toString();
     }
 

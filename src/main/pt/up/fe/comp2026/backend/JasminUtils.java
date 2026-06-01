@@ -42,11 +42,24 @@ public class JasminUtils {
 
 
     public String getTypePrefix(Type type) {
-        System.out.println("[TODO] JasminUtils.getTypePrefix(): Assumes it is always int, needs to be expanded");
-        return "i";
+        if (type instanceof ArrayType) {
+            return "a";
+        }
+        if (type instanceof BuiltinType builtinType) {
+            return switch (builtinType.getKind()) {
+                case INT32, BOOLEAN -> "i";
+                case VOID -> "";
+                default -> "a";
+            };
+        }
+        return "a";
     }
 
     public String getTypeDescriptor(Type type) {
+
+        if (type instanceof ArrayType arrayType) {
+            return "[" + getTypeDescriptor(arrayType.getElementType());
+        }
 
         if (type instanceof BuiltinType builtinType) {
             return switch (builtinType.getKind()) {
@@ -59,7 +72,12 @@ public class JasminUtils {
             };
         }
 
-        throw new RuntimeException("Not implemented for element type '" + type + "'");
+        // Class type
+        if (type instanceof ClassType classType) {
+            return "L" + getFullClassName(classType.getName()) + ";";
+        }
+
+        return "L" + getFullClassName(type.getNodeName()) + ";";
     }
 
 

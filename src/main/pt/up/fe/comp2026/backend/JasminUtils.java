@@ -51,6 +51,9 @@ public class JasminUtils {
         if (type instanceof BuiltinType builtinType) {
             return switch (builtinType.getKind()) {
                 case INT32 -> "I";
+                case BOOLEAN -> "Z";
+                case VOID -> "V";
+                case STRING -> "Ljava/lang/String;";
                 default ->
                         throw new RuntimeException("Not implemented for element type '" + builtinType.getKind() + "'");
             };
@@ -80,6 +83,37 @@ public class JasminUtils {
         return prefix + "store " + value;
     }
 
+    public String getFullClassName(String className) {
+        // 'this' class
+        if (className.equals(
+                ollirResult.getOllirClass().getClassName())) {
 
+            return ollirResult.getOllirClass()
+                    .getClassFullyQualifiedName()
+                    .replace('.', '/');
+        }
+
+        // superclass Object
+        if (className.equals("Object")) {
+            return "java/lang/Object";
+        }
+
+        // imported classes
+        for (String imp : ollirResult.getOllirClass().getImports()) {
+
+            // Example:
+            // import java.util.List;
+            // simpleName = List
+            String simpleName =
+                    imp.substring(imp.lastIndexOf('.') + 1);
+
+            if (simpleName.equals(className)) {
+                return imp.replace('.', '/');
+            }
+        }
+
+        // fallback: assume same package / already qualified
+        return className.replace('.', '/');
+    }
 
 }

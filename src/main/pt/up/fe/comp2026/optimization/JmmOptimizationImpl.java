@@ -22,8 +22,19 @@ public class JmmOptimizationImpl implements JmmOptimization {
     @Override
     public JmmSemanticsResult optimize(JmmSemanticsResult semanticsResult) {
         JmmNode root = semanticsResult.getRootNode();
-        NodeOptimizationVisitor visitor = new NodeOptimizationVisitor();
-        visitor.visit(root, semanticsResult.getSymbolTable());
+        AstOptimizer opt = new AstOptimizer();
+
+        // Always strip structural wrappers (FULL_ASSIGN_STMT etc.) — required for OLLIR gen
+        opt.stripWrappers(root);
+
+        // Run optimisation passes to fixpoint only when -o flag is set
+        if ("true".equals(semanticsResult.config().getOrDefault("optimize", "false"))) {
+            boolean changed = true;
+            while (changed) {
+                changed = opt.runPass(root);
+            }
+        }
+
         return semanticsResult;
     }
 

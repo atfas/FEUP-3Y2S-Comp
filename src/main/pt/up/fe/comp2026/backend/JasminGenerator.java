@@ -72,8 +72,12 @@ public class JasminGenerator {
         
         // Method Calls
         generators.put(InvokeVirtualInstruction.class, this::generateInvokeVirtual);
-        //generators.put(InvokeStaticInstruction.class, this::generateInvokeStatic);
-        //generators.put(InvokeSpecialInstruction.class, this::generateInvokeSpecial);
+        generators.put(InvokeStaticInstruction.class, this::generateInvokeStatic);
+        generators.put(InvokeSpecialInstruction.class, this::generateInvokeSpecial);
+
+        // Fields
+        generators.put(PutFieldInstruction.class, this::generatePutField);
+        generators.put(GetFieldInstruction.class, this::generateGetField);
 
         // Arrays
         generators.put(NewInstruction.class, this::generateNew);
@@ -153,9 +157,137 @@ public class JasminGenerator {
 
         if (!returnType.equals("V")) {
             updateStack(1);
+            // Discard result if the call is not consumed by an assignment
+            if (!isInsideAssignment) {
+                code.append("pop").append(NL);
+                updateStack(-1);
+            }
         }
 
         return code.toString();
+    }
+
+    private String generateInvokeStatic(InvokeStaticInstruction invoke) {
+        var code = new StringBuilder();
+
+        // Load arguments (no caller object for static)
+        for (var arg : invoke.getArguments()) {
+            code.append(apply(arg));
+        }
+
+        // Caller is the class name
+        var caller = (Operand) invoke.getCaller();
+        String className = types.getFullClassName(caller.getName());
+
+        String methodName = ((LiteralElement) invoke.getMethodName()).getLiteral().replace("\"", "");
+        String params = invoke.getArguments().stream()
+                .map(arg -> types.getTypeDescriptor(arg.getType()))
+                .collect(Collectors.joining());
+        String returnType = types.getTypeDescriptor(invoke.getReturnType());
+
+        code.append("invokestatic ").append(className).append("/").append(methodName)
+                .append("(").append(params).append(")").append(returnType).append(NL);
+
+        updateStack(-invoke.getArguments().size());
+
+        if (!returnType.equals("V")) {
+            updateStack(1);
+            if (!isInsideAssignment) {
+                code.append("pop").append(NL);
+                updateStack(-1);
+            }
+        }
+
+        return code.toString();
+    }
+
+    private String generateInvokeSpecial(InvokeSpecialInstruction invoke) {
+        var code = new StringBuilder();
+
+        // Load caller object
+        code.append(apply(invoke.getCaller()));
+
+        // Load arguments
+        for (var arg : invoke.getArguments()) {
+            code.append(apply(arg));
+        }
+
+        // Determine the class to invoke on
+        String className;
+        var superClass = invoke.getSuperClass();
+        if (superClass.isPresent()) {
+            // superClass is stored as dotted name like "java.lang.Object"
+            className = types.getFullClassName(superClass.get());
+        } else {
+            className = resolveClassName(invoke.getCaller().getType());
+        }
+
+        String methodName = ((LiteralElement) invoke.getMethodName()).getLiteral().replace("\"", "");
+        String params = invoke.getArguments().stream()
+                .map(arg -> types.getTypeDescriptor(arg.getType()))
+                .collect(Collectors.joining());
+        String returnType = types.getTypeDescriptor(invoke.getReturnType());
+
+        code.append("invokespecial ").append(className).append("/").append(methodName)
+                .append("(").append(params).append(")").append(returnType).append(NL);
+
+        int consumed = invoke.getArguments().size() + 1;
+        updateStack(-consumed);
+
+        if (!returnType.equals("V")) {
+            updateStack(1);
+            if (!isInsideAssignment) {
+                code.append("pop").append(NL);
+                updateStack(-1);
+            }
+        }
+
+        return code.toString();
+    }
+
+    private String generatePutField(PutFieldInstruction inst) {
+        var code = new StringBuilder();
+        // Load object reference
+        var objReg = currentMethod.getVarTable().get(inst.getObject().getName());
+        code.append(types.getLoad(objReg)).append(NL);
+        updateStack(1);
+        // Load value
+        code.append(apply(inst.getValue()));
+        // Emit putfield — use field operand's type, not instruction return type
+        String className = resolveClassName(inst.getObject().getType());
+        String fieldName = inst.getField().getName();
+        String fieldType = types.getTypeDescriptor(inst.getField().getType());
+        code.append("putfield ").append(className).append("/")
+                .append(fieldName).append(" ").append(fieldType).append(NL);
+        updateStack(-2);
+        return code.toString();
+    }
+
+    private String generateGetField(GetFieldInstruction inst) {
+        var code = new StringBuilder();
+        // Load object reference
+        var objReg = currentMethod.getVarTable().get(inst.getObject().getName());
+        code.append(types.getLoad(objReg)).append(NL);
+        updateStack(1);
+        // Emit getfield — use field operand's type, not instruction return type
+        String className = resolveClassName(inst.getObject().getType());
+        String fieldName = inst.getField().getName();
+        String fieldType = types.getTypeDescriptor(inst.getField().getType());
+        code.append("getfield ").append(className).append("/")
+                .append(fieldName).append(" ").append(fieldType).append(NL);
+        // net: -1 (object) +1 (value) = 0 extra (already counted +1 for object load)
+        return code.toString();
+    }
+
+    // Helper: resolve class name from a Type
+    private String resolveClassName(Type type) {
+        if (type instanceof ClassType ct) {
+            return types.getFullClassName(ct.getName());
+        }
+        if (type instanceof BuiltinType bt && bt.getKind() == BuiltinKind.STRING) {
+            return "java/lang/String";
+        }
+        return types.getFullClassName(type.getNodeName());
     }
 
 
@@ -193,10 +325,23 @@ public class JasminGenerator {
         var nameWithPackage = ollirResult.getOllirClass().getClassFullyQualifiedName().replace('.', '/');
         code.append(".class public ").append(nameWithPackage).append(NL).append(NL);
 
-        // TODO: When you support 'extends', this must be updated
-        var fullSuperClass =  "java/lang/Object";
+        // Resolve super class
+        var superClassName = ollirResult.getOllirClass().getSuperClass();
+        var fullSuperClass = (superClassName == null || superClassName.isEmpty())
+                ? "java/lang/Object"
+                : types.getFullClassName(superClassName);
 
         code.append(".super ").append(fullSuperClass).append(NL);
+
+        // Generate field declarations
+        for (var field : ollirResult.getOllirClass().getFields()) {
+            var fieldModifier = types.getFieldModifier(field.getFieldAccessModifier());
+            var fieldName = field.getFieldName();
+            var fieldType = types.getTypeDescriptor(field.getFieldType());
+            // Quote field name to avoid conflicts with Jasmin reserved words (e.g., "field")
+            code.append(".field ").append(fieldModifier).append(" '")
+                    .append(fieldName).append("' ").append(fieldType).append(NL);
+        }
 
         // generate a single constructor method
         var defaultConstructor = """
@@ -437,8 +582,8 @@ public class JasminGenerator {
             updateStack(-1); // size consumed, array ref pushed: apply already counted +1, so net 0, remove the extra
             updateStack(1);  // array ref
         } else {
-            // Object instantiation (not needed for arrays tests but keep for completeness)
-            String className = types.getFullClassName(retType.getNodeName());
+            // Object instantiation
+            String className = resolveClassName(retType);
             code.append("new ").append(className).append(NL);
             updateStack(1);
         }

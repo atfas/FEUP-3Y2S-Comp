@@ -84,7 +84,17 @@ public class JasminUtils {
 
 
     public String getModifier(AccessModifier accessModifier) {
+        if (accessModifier == AccessModifier.DEFAULT) return "";
         return accessModifier.name().toLowerCase() + " ";
+    }
+
+    public String getFieldModifier(AccessModifier accessModifier) {
+        // Jasmin requires at least one access keyword; DEFAULT maps to public (package-private unsupported)
+        return switch (accessModifier) {
+            case PRIVATE -> "private";
+            case PROTECTED -> "protected";
+            default -> "public"; // PUBLIC and DEFAULT both use "public"
+        };
     }
 
     public String getLoad(Descriptor reg) {
@@ -102,6 +112,11 @@ public class JasminUtils {
     }
 
     public String getFullClassName(String className) {
+        // Already a dotted qualified name (e.g. "java.lang.Object" from superClass)
+        if (className.contains(".")) {
+            return className.replace('.', '/');
+        }
+
         // 'this' class
         if (className.equals(
                 ollirResult.getOllirClass().getClassName())) {
@@ -114,6 +129,11 @@ public class JasminUtils {
         // superclass Object
         if (className.equals("Object")) {
             return "java/lang/Object";
+        }
+
+        // String class
+        if (className.equals("String")) {
+            return "java/lang/String";
         }
 
         // imported classes

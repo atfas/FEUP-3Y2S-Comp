@@ -878,9 +878,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
             }
 
             case "++": {
-                var temp = ollirTypes.nextTemp() + ollirType;
-
-                computation.append(temp)
+                computation.append(operand.getCode())
                         .append(ASSIGN)
                         .append(ollirType)
                         .append(SPACE)
@@ -893,14 +891,12 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
                         .append(ollirType)
                         .append(END_STMT);
 
-                code = temp;
+                code = operand.getCode();
                 break;
             }
 
             case "--": {
-                var temp = ollirTypes.nextTemp() + ollirType;
-
-                computation.append(temp)
+                computation.append(operand.getCode())
                         .append(ASSIGN)
                         .append(ollirType)
                         .append(SPACE)
@@ -913,7 +909,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
                         .append(ollirType)
                         .append(END_STMT);
 
-                code = temp;
+                code = operand.getCode();
                 break;
             }
 

@@ -68,6 +68,7 @@ public class JasminGenerator {
         generators.put(LiteralElement.class, this::generateLiteral);
         generators.put(Operand.class, this::generateOperand);
         generators.put(BinaryOpInstruction.class, this::generateBinaryOp);
+        generators.put(UnaryOpInstruction.class, this::generateUnaryOp);
         generators.put(ReturnInstruction.class, this::generateReturn);
         
         // Method Calls
@@ -494,6 +495,25 @@ public class JasminGenerator {
         return types.getLoad(reg) + NL;
     }
 
+    private String generateUnaryOp(UnaryOpInstruction unaryOp) {
+        var code = new StringBuilder();
+        code.append(apply(unaryOp.getOperand()));
+
+        var typePrefix = types.getTypePrefix(unaryOp.getOperation().getTypeInfo());
+        var opType = unaryOp.getOperation().getOpType();
+
+        if (opType == OperationType.LOGICAL_NOT){
+            code.append(typePrefix).append("const_1").append(NL);
+            updateStack(1);
+            code.append(typePrefix).append("xor").append(NL);
+            updateStack(-1);
+        } else {
+            throw new NotImplementedException(opType);
+        }
+
+        return code.toString();
+    }
+
 
     private String generateBinaryOp(BinaryOpInstruction binaryOp) {
 
@@ -541,10 +561,11 @@ public class JasminGenerator {
             case DIV -> "div";
             case BITWISE_AND -> "and";
             case BITWISE_OR  -> "or";
+            case REM -> "rem";
             default -> throw new NotImplementedException(opType);
         };
 
-        code.append(typePrefix + op).append(NL);
+        code.append(typePrefix).append(op).append(NL);
         updateStack(-1);
 
         return code.toString();

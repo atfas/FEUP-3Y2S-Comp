@@ -126,14 +126,16 @@ public class JasminUtils {
                     .replace('.', '/');
         }
 
-        // superclass Object
-        if (className.equals("Object")) {
-            return "java/lang/Object";
-        }
-
-        // String class
-        if (className.equals("String")) {
-            return "java/lang/String";
+        // java.lang implicit classes
+        switch (className) {
+            case "Object":
+                return "java/lang/Object";
+            case "Exception":
+                return "java/lang/Exception";
+            case "RuntimeException":
+                return "java/lang/RuntimeException";
+            case "String":
+                return "java/lang/String";
         }
 
         // imported classes

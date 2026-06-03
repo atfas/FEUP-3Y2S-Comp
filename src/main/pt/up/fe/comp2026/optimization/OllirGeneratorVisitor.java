@@ -225,54 +225,84 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
     private String visitForStmt(JmmNode node, Void unused) {
         StringBuilder code = new StringBuilder();
 
-        var children = node.getChildren();
+        // Optional components
+        JmmNode initNode = null;
+        JmmNode condNode = null;
+        JmmNode updateNode = null;
+        JmmNode bodyNode = null;
 
-        var initNode = (children.get(0)).getChild(0);
-        var condNode = (children.get(1)).getChild(0);
-        var updateNode = (children.get(2)).getChild(0);
-        var bodyNode = children.get(3);
+        // Safely fetch nodes if they exist
+        if (!node.getChildren(FOR_INIT).isEmpty()) {
+            initNode = node.getChildren(FOR_INIT).getFirst().getChild(0);
+        }
 
-        var cond = exprVisitor.visit(condNode);
+        if (!node.getChildren(FOR_COND).isEmpty()) {
+            condNode = node.getChildren(FOR_COND).getFirst().getChild(0);
+        }
+
+        if (!node.getChildren(FOR_UPDATE).isEmpty()) {
+            updateNode = node.getChildren(FOR_UPDATE).getFirst().getChild(0);
+        }
+
+        // Body should always exist
+        if (!node.getChildren(COMPLEX_STMT).isEmpty()) {
+            bodyNode = node.getChildren(COMPLEX_STMT).getFirst();
+        }
 
         String condLabel = ollirTypes.nextTemp("FOR_COND");
         String bodyLabel = ollirTypes.nextTemp("FOR_BODY");
         String updateLabel = ollirTypes.nextTemp("FOR_UPDATE");
         String endLabel = ollirTypes.nextTemp("FOR_END");
 
-        // Initialization
-        code.append(indent(visit(initNode)));
+        // Initialization (optional)
+        if (initNode != null) {
+            code.append(indent(visit(initNode)));
+        }
 
+        // Condition label
         code.append(condLabel)
                 .append(":\n");
 
-        // Evaluate condition
-        code.append(cond.getComputation());
+        // Condition (optional)
+        // If omitted: for(;;) => infinite loop
+        if (condNode != null) {
+            var cond = exprVisitor.visit(condNode);
 
-        // Conditional jump
-        code.append("if (")
-                .append(cond.getCode())
-                .append(") goto ")
-                .append(bodyLabel)
-                .append(END_STMT);
+            code.append(cond.getComputation());
 
-        // Jump to end
-        code.append("goto ")
-                .append(endLabel)
-                .append(END_STMT);
+            code.append("if (")
+                    .append(cond.getCode())
+                    .append(") goto ")
+                    .append(bodyLabel)
+                    .append(END_STMT);
 
+            code.append("goto ")
+                    .append(endLabel)
+                    .append(END_STMT);
+        } else {
+            // No condition means always true
+            code.append("goto ")
+                    .append(bodyLabel)
+                    .append(END_STMT);
+        }
+
+        // Body
         code.append(bodyLabel)
                 .append(":\n");
 
-        // Loop body
-        code.append(indent(visit(bodyNode)));
+        if (bodyNode != null) {
+            code.append(indent(visit(bodyNode)));
+        }
 
+        // Update section
         code.append(updateLabel)
                 .append(":\n");
 
-        // Update
-        code.append(indent(visit(updateNode)));
+        if (updateNode != null) {
+            code.append(indent(visit(updateNode)));
+        }
 
-        // Jump back to condition
+        // Back to condition
         code.append("goto ")
                 .append(condLabel)
                 .append(END_STMT);

@@ -666,24 +666,46 @@ public class JasminGenerator {
         return code.toString();
     }
 
-    private String generateOpCond(OpCondInstruction inst) {
+    private String generateOpCond(OpCondInstruction cond) {
         var code = new StringBuilder();
-        var binaryOp = (BinaryOpInstruction) inst.getCondition();
-        // Load operands
-        code.append(apply(binaryOp.getLeftOperand()));
-        code.append(apply(binaryOp.getRightOperand()));
-        // Direct comparison branch
-        var branch = switch (binaryOp.getOperation().getOpType()) {
-            case LTH -> "if_icmplt";
-            case LTE -> "if_icmple";
-            case GTH -> "if_icmpgt";
-            case GTE -> "if_icmpge";
-            case EQ  -> "if_icmpeq";
-            case NEQ -> "if_icmpne";
-            default  -> throw new NotImplementedException(binaryOp.getOperation().getOpType());
-        };
-        code.append(branch).append(" ").append(inst.getLabel()).append(NL);
-        updateStack(-2);
+
+        var condition = cond.getCondition();
+
+        if (condition instanceof BinaryOpInstruction binaryOp) {
+
+            code.append(apply(binaryOp));
+
+            switch (binaryOp.getOperation().getOpType()) {
+                case LTH -> code.append("iflt ");
+                case GTH -> code.append("ifgt ");
+                case LTE -> code.append("ifle ");
+                case GTE -> code.append("ifge ");
+                case EQ  -> code.append("ifeq ");
+                case NEQ -> code.append("ifne ");
+                case LOGICAL_AND -> code.append("ifne ");
+                case LOGICAL_OR -> code.append("ifne ");
+                default ->
+                        throw new NotImplementedException(binaryOp.getOperation().getOpType());
+            }
+
+        } else if (condition instanceof UnaryOpInstruction unaryOp) {
+
+            code.append(apply(unaryOp));
+
+            switch (unaryOp.getOperation().getOpType()) {
+                case LOGICAL_NOT -> code.append("ifne ");
+                default ->
+                        throw new NotImplementedException(unaryOp.getOperation().getOpType());
+            }
+
+        } else {
+            throw new RuntimeException(
+                    "Unsupported condition instruction: " + condition.getClass()
+            );
+        }
+
+        code.append(cond.getLabel()).append(NL);
+
         return code.toString();
     }
 

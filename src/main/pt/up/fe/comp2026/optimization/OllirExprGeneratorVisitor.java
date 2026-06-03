@@ -847,69 +847,280 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         var exprType = TypeUtils.with(table).getExprType(node);
         var ollirType = ollirTypes.toOllirType(exprType);
 
-        computation.append(operand.getComputation());
-
-        String code;
+        String code = operand.getCode();
 
         switch (node.get("op")) {
             case "+": {
+                computation.append(operand.getComputation());
                 code = operand.getCode();
                 break;
             }
 
             case "-": {
                 var temp = ollirTypes.nextTemp() + ollirType;
+                computation.append(operand.getComputation());
 
                 computation.append(temp)
-                        .append(ASSIGN)
-                        .append(ollirType)
-                        .append(SPACE)
-                        .append("0")
-                        .append(ollirType)
-                        .append(SPACE)
-                        .append("-")
-                        .append(ollirType)
-                        .append(SPACE)
-                        .append(operand.getCode())
-                        .append(END_STMT);
+                    .append(ASSIGN)
+                    .append(ollirType)
+                    .append(SPACE)
+                    .append("0")
+                    .append(ollirType)
+                    .append(SPACE)
+                    .append("-")
+                    .append(ollirType)
+                    .append(SPACE)
+                    .append(operand.getCode())
+                    .append(END_STMT);
 
                 code = temp;
                 break;
             }
 
             case "++": {
-                computation.append(operand.getCode())
-                        .append(ASSIGN)
-                        .append(ollirType)
-                        .append(SPACE)
-                        .append(operand.getCode())
-                        .append(SPACE)
-                        .append("+")
-                        .append(ollirType)
-                        .append(SPACE)
-                        .append("1")
-                        .append(ollirType)
-                        .append(END_STMT);
+                // Special-case: a[i]++ / ++a[i] should store back into the array slot.
+                JmmNode operandNode = node.getChild(0);
 
-                code = operand.getCode();
+                // Search subtree for an ARRAY_EXPR and its enclosing POSTFIX_EXPR
+                JmmNode arrayExpr = null;
+                JmmNode arrayPostfix = null;
+
+                // BFS search for ARRAY_EXPR
+                List<JmmNode> queue = new ArrayList<>();
+                queue.add(operandNode);
+                while (!queue.isEmpty() && arrayExpr == null) {
+                    JmmNode cur = queue.remove(0);
+                    if (cur.getKind().equals(ARRAY_EXPR)) {
+                        arrayExpr = cur;
+                        break;
+                    }
+                    for (var c : cur.getChildren()) queue.add(c);
+                }
+
+                if (arrayExpr != null) {
+                    // find enclosing POSTFIX_EXPR (walk up parents)
+                    JmmNode p = arrayExpr.getParent();
+                    while (p != null && !p.getKind().equals(POSTFIX_EXPR)) p = p.getParent();
+                    arrayPostfix = p;
+                }
+
+                if (arrayExpr != null && arrayPostfix != null) {
+                    // base is first child of postfix, index is child(0) of arrayExpr
+                    var baseRes = visit(arrayPostfix.getChild(0));
+                    var indexRes = visit(arrayExpr.getChild(0));
+
+                    StringBuilder comp = new StringBuilder();
+                    comp.append(baseRes.getComputation());
+                    comp.append(indexRes.getComputation());
+
+                    String tempElem = ollirTypes.nextTemp() + ollirType;
+                    comp.append(tempElem)
+                            .append(ASSIGN)
+                            .append(ollirType)
+                            .append(SPACE)
+                            .append(baseRes.getCode())
+                            .append("[")
+                            .append(indexRes.getCode())
+                            .append("]")
+                            .append(ollirType)
+                            .append(END_STMT);
+
+                    String tempInc = ollirTypes.nextTemp() + ollirType;
+                    comp.append(tempInc)
+                            .append(ASSIGN)
+                            .append(ollirType)
+                            .append(SPACE)
+                            .append(tempElem)
+                            .append(SPACE)
+                            .append("+")
+                            .append(ollirType)
+                            .append(SPACE)
+                            .append("1")
+                            .append(ollirType)
+                            .append(END_STMT);
+
+                    // store back into array slot
+                    comp.append(baseRes.getCode())
+                            .append("[")
+                            .append(indexRes.getCode())
+                            .append("]")
+                            .append(ollirType)
+                            .append(SPACE)
+                            .append(ASSIGN)
+                            .append(ollirType)
+                            .append(SPACE)
+                            .append(tempInc)
+                            .append(END_STMT);
+
+                    computation.append(comp);
+                    code = tempInc;
+                } else {
+                    computation.append(operand.getComputation());
+
+                    // Detect if operand corresponds to a field reference so we can store back
+                    JmmNode varRefNode = null;
+                    List<JmmNode> q = new ArrayList<>();
+                    q.add(operandNode);
+                    while (!q.isEmpty() && varRefNode == null) {
+                        JmmNode cur = q.remove(0);
+                        if (cur.getKind().equals(VAR_REF_EXPR)) {
+                            varRefNode = cur;
+                            break;
+                        }
+                        for (var c : cur.getChildren()) q.add(c);
+                    }
+
+                    boolean emittedPutfield = false;
+                    if (varRefNode != null) {
+                        var name = varRefNode.get("name");
+                        var methodNode = varRefNode.getAncestor(METHOD_DECL).orElseThrow();
+                        var signature = TypeUtils.with(table).getMethodDeclSignature(methodNode);
+                        var method = table.getMethod(signature).orElseThrow();
+
+                        boolean isLocal = method.getLocalVariable(name).isPresent();
+                        boolean isParam = method.getParameter(name).isPresent();
+
+                        if (!isLocal && !isParam) {
+                            // It's a field: operand.getComputation() already loaded it into a temp
+                            String tempLoaded = operand.getCode();
+                            String tempInc = ollirTypes.nextTemp() + ollirType;
+
+                            computation.append(tempInc)
+                                    .append(ASSIGN)
+                                    .append(ollirType)
+                                    .append(SPACE)
+                                    .append(tempLoaded)
+                                    .append(SPACE)
+                                    .append("+")
+                                    .append(ollirType)
+                                    .append(SPACE)
+                                    .append("1")
+                                    .append(ollirType)
+                                    .append(END_STMT);
+
+                            String id = ollirTypes.sanitizeId(name);
+                            JmmType fieldType = TypeUtils.with(table).getExprType(varRefNode);
+                            String fieldOllirType = ollirTypes.toOllirType(fieldType);
+
+                            computation.append("putfield(this, ")
+                                    .append(id)
+                                    .append(fieldOllirType)
+                                    .append(", ")
+                                    .append(tempInc)
+                                    .append(").V")
+                                    .append(END_STMT);
+
+                            code = tempInc;
+                            emittedPutfield = true;
+                        }
+                    }
+
+                    if (!emittedPutfield) {
+                        computation.append(operand.getCode())
+                                .append(ASSIGN)
+                                .append(ollirType)
+                                .append(SPACE)
+                                .append(operand.getCode())
+                                .append(SPACE)
+                                .append("+")
+                                .append(ollirType)
+                                .append(SPACE)
+                                .append("1")
+                                .append(ollirType)
+                                .append(END_STMT);
+
+                        code = operand.getCode();
+                    }
+                }
+
                 break;
             }
 
             case "--": {
-                computation.append(operand.getCode())
-                        .append(ASSIGN)
-                        .append(ollirType)
-                        .append(SPACE)
-                        .append(operand.getCode())
-                        .append(SPACE)
-                        .append("-")
-                        .append(ollirType)
-                        .append(SPACE)
-                        .append("1")
-                        .append(ollirType)
-                        .append(END_STMT);
+                // Special-case for array decrement, mirror of ++
+                JmmNode operandNode = node.getChild(0);
 
-                code = operand.getCode();
+                boolean handledDec = false;
+
+                if (operandNode.getKind().equals(PRIMARY_EXPR) && operandNode.getNumChildren() > 0
+                        && operandNode.getChild(0).getKind().equals(POSTFIX_EXPR)) {
+
+                    JmmNode post = operandNode.getChild(0);
+
+                    for (int i = 1; i < post.getNumChildren(); i++) {
+                        JmmNode pf = post.getChild(i);
+                        if (pf.getKind().equals(ARRAY_EXPR)) {
+                            var baseRes = visit(post.getChild(0));
+                            var indexRes = visit(pf.getChild(0));
+
+                            StringBuilder comp = new StringBuilder();
+                            comp.append(baseRes.getComputation());
+                            comp.append(indexRes.getComputation());
+
+                            String tempElem = ollirTypes.nextTemp() + ollirType;
+                            comp.append(tempElem)
+                                    .append(ASSIGN)
+                                    .append(ollirType)
+                                    .append(SPACE)
+                                    .append(baseRes.getCode())
+                                    .append("[")
+                                    .append(indexRes.getCode())
+                                    .append("]")
+                                    .append(ollirType)
+                                    .append(END_STMT);
+
+                            String tempDec = ollirTypes.nextTemp() + ollirType;
+                            comp.append(tempDec)
+                                    .append(ASSIGN)
+                                    .append(ollirType)
+                                    .append(SPACE)
+                                    .append(tempElem)
+                                    .append(SPACE)
+                                    .append("-")
+                                    .append(ollirType)
+                                    .append(SPACE)
+                                    .append("1")
+                                    .append(ollirType)
+                                    .append(END_STMT);
+
+                            comp.append(baseRes.getCode())
+                                    .append("[")
+                                    .append(indexRes.getCode())
+                                    .append("]")
+                                    .append(ollirType)
+                                    .append(SPACE)
+                                    .append(ASSIGN)
+                                    .append(ollirType)
+                                    .append(SPACE)
+                                    .append(tempDec)
+                                    .append(END_STMT);
+
+                            computation.append(comp);
+                            code = tempDec;
+                            handledDec = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!handledDec) {
+                    computation.append(operand.getComputation());
+                    computation.append(operand.getCode())
+                            .append(ASSIGN)
+                            .append(ollirType)
+                            .append(SPACE)
+                            .append(operand.getCode())
+                            .append(SPACE)
+                            .append("-")
+                            .append(ollirType)
+                            .append(SPACE)
+                            .append("1")
+                            .append(ollirType)
+                            .append(END_STMT);
+
+                    code = operand.getCode();
+                }
+
                 break;
             }
 

@@ -50,7 +50,13 @@ public class TypeUtils {
             if (importName.isPresent()) {
                 type = JmmClassType.ofInstance(importName.get(), true);
             } else {
-                type = JmmClassType.ofInstance(name, false);
+                // Normalize implicit java.lang types so they compare equal to their FQN counterparts
+                String javaLangFqn = toJavaLangFqn(name);
+                if (javaLangFqn != null) {
+                    type = JmmClassType.ofInstance(javaLangFqn, true);
+                } else {
+                    type = JmmClassType.ofInstance(name, false);
+                }
             }
         }
 
@@ -68,6 +74,17 @@ public class TypeUtils {
 
     public JmmType convertType(JmmNode typeNode) {
         return convertType(typeNode, table.getClassName(), table.getFullyQualifiedName(), table.getImports());
+    }
+
+    private static final Map<String, String> JAVA_LANG_TYPES = Map.of(
+            "String", "java.lang.String",
+            "Object", "java.lang.Object",
+            "Exception", "java.lang.Exception",
+            "RuntimeException", "java.lang.RuntimeException"
+    );
+
+    private static String toJavaLangFqn(String simpleName) {
+        return JAVA_LANG_TYPES.get(simpleName);
     }
 
     public JmmType getVarType(String name, MethodSymbol method) {
@@ -350,7 +367,7 @@ public class TypeUtils {
 
         Signature signature = new Signature(methodName, argTypes);
 
-        // ✅ 1. Local class / this
+        //  1. Local class / this
         if (!cls.isImported()) {
             Optional<MethodSymbol> localMethod =
                     getMethodInHierarchy(signature);
@@ -360,7 +377,7 @@ public class TypeUtils {
             }
         }
 
-        // ✅ 2. Imported class
+        // 2. Imported class
         Optional<SymbolTable> receiverTable =
                 table.getImportedSymbolTable(cls.fullyQualifiedName());
 
@@ -421,13 +438,13 @@ public class TypeUtils {
                 return true;
             }
 
-            // ✅ Primeiro: classe local
+            //  Primeiro: classe local
             if (current.equals(table.getFullyQualifiedName())) {
                 current = table.getSuperFullyQualifiedName();
                 continue;
             }
 
-            // ✅ Depois: classes importadas
+            //  Depois: classes importadas
             Optional<SymbolTable> tableOpt =
                     table.getImportedSymbolTable(current);
 

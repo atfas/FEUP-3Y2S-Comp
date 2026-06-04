@@ -356,28 +356,21 @@ public class JasminGenerator {
                     .append(fieldName).append("' ").append(fieldType).append(NL);
         }
 
-        // generate a single constructor method
-        var defaultConstructor = """
-                ;default constructor
-                .method public <init>()V
-                    aload_0
-                    invokespecial %s/<init>()V
-                    return
-                .end method
-                """.formatted(fullSuperClass);
-        code.append(defaultConstructor);
-
-        // generate code for all other methods
+        // generate code for all methods, including the constructor if present
         for (var method : ollirResult.getOllirClass().getMethods()) {
-
-            // Ignore constructor, since there is always one constructor
-            // that receives no arguments, and has been already added
-            // previously
-            if (method.isConstructMethod()) {
-                continue;
-            }
-
             code.append(apply(method));
+        }
+
+        // Fallback for class files that do not define a constructor in OLLIR
+        if (ollirResult.getOllirClass().getMethods().stream().noneMatch(Method::isConstructMethod)) {
+            code.append("""
+                    ;default constructor
+                    .method public <init>()V
+                        aload_0
+                        invokespecial %s/<init>()V
+                        return
+                    .end method
+                    """.formatted(fullSuperClass));
         }
 
         return code.toString();
@@ -397,7 +390,9 @@ public class JasminGenerator {
 
         var code = new StringBuilder();
 
-        var modifier = types.getModifier(method.getMethodAccessModifier());
+        var modifier = method.isConstructMethod()
+                ? "public "
+                : types.getModifier(method.getMethodAccessModifier());
 
 
         var staticMod = method.isStaticMethod() ? "static " : "";
@@ -436,6 +431,11 @@ public class JasminGenerator {
         code.append(TAB).append(".limit locals ").append(computeLocals(method)).append(NL);
 
         code.append(TAB).append(bodyCode);
+
+        if (method.isConstructMethod()
+                && method.getInstructions().stream().noneMatch(ReturnInstruction.class::isInstance)) {
+            code.append(TAB).append("return").append(NL);
+        }
 
         code.append(".end method\n");
         // unset method

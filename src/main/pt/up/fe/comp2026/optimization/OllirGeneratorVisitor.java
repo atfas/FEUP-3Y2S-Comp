@@ -459,7 +459,9 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
             var lastIndexExpr = exprVisitor.visit(node.getChild(indexCount - 1));
             code.append(lastIndexExpr.getComputation());
 
-            JmmType finalType = currentType.asArray().itemType();
+            JmmType finalType = currentType.asArray().dimension() == 1
+                    ? currentType.asArray().itemType()
+                    : JmmArrayType.of(currentType.asArray().itemType(), currentType.asArray().dimension() - 1);
             String finalOllirType = ollirTypes.toOllirType(finalType);
 
             code.append(currentBase)

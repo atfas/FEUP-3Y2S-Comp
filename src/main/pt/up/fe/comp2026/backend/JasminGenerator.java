@@ -463,8 +463,9 @@ public class JasminGenerator {
                 }
                 // load value
                 code.append(apply(assign.getRhs()));
-                // store into array
-                code.append("iastore").append(NL);
+                // store into array: use aastore for reference types (arrays), iastore for int/bool
+                String storeOp = (arrayOp.getType() instanceof ArrayType) ? "aastore" : "iastore";
+                code.append(storeOp).append(NL);
                 updateStack(-3);
                 return code.toString();
             }
@@ -603,16 +604,23 @@ public class JasminGenerator {
         var retType = newInst.getReturnType();
 
         if (retType instanceof ArrayType arrayType) {
-            // Push the size argument
             var args = newInst.getArguments();
-            // args[0] is the size
-            code.append(apply(args.get(0)));
-            // Determine element type string
-            String elemTypeStr = getArrayElementTypeName(arrayType.getElementType());
-            code.append("newarray ").append(elemTypeStr).append(NL);
-            // net stack effect: consumed size (+1 already counted in apply), pushed array ref → 0 net extra
-            updateStack(-1); // size consumed, array ref pushed: apply already counted +1, so net 0, remove the extra
-            updateStack(1);  // array ref
+            if (args.size() > 1) {
+                // multidimensional: push all dimension sizes then emit multianewarray
+                for (var arg : args) {
+                    code.append(apply(arg));
+                }
+                String descriptor = types.getTypeDescriptor(arrayType);
+                code.append("multianewarray ").append(descriptor).append(" ").append(args.size()).append(NL);
+                updateStack(-(args.size() - 1)); // args consumed, array ref left on stack
+            } else {
+                // single-dimension: push size then emit newarray
+                code.append(apply(args.get(0)));
+                String elemTypeStr = getArrayElementTypeName(arrayType.getElementType());
+                code.append("newarray ").append(elemTypeStr).append(NL);
+                updateStack(-1); // size consumed, array ref pushed
+                updateStack(1);  // array ref
+            }
         } else {
             // Object instantiation
             String className = resolveClassName(retType);
@@ -649,12 +657,14 @@ public class JasminGenerator {
         // load array reference
         code.append(types.getLoad(reg)).append(NL);
         updateStack(1);
-        // load index
+        // load index (only first index; multidim chains are handled via intermediate temps in OLLIR)
         for (var idx : arrayOp.getIndexOperands()) {
             code.append(apply(idx));
         }
-        // load element
-        code.append("iaload").append(NL);
+        // load element: use aaload for reference types (arrays), iaload for int/bool
+        var elemType = arrayOp.getType();
+        String loadOp = (elemType instanceof ArrayType) ? "aaload" : "iaload";
+        code.append(loadOp).append(NL);
         updateStack(-1); // consumed array ref + index, pushed element
         return code.toString();
     }

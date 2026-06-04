@@ -208,7 +208,7 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
 
         // Collect Args
         List<OllirExprResult> args = getMethodArgs(node);
-        
+
         // get return type
         String ollirRetType = getMethodReturnType(node);
 
@@ -224,9 +224,9 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
                                 );
 
         boolean isStaticLocalCall =
-            baseNode.getKind().equals(VAR_REF_EXPR) &&
-                (baseNode.get("name").equals(table.getClassName()) ||
-                    baseNode.get("name").equals(table.getFullyQualifiedName()));
+                baseNode.getKind().equals(VAR_REF_EXPR) &&
+                        (baseNode.get("name").equals(table.getClassName()) ||
+                                baseNode.get("name").equals(table.getFullyQualifiedName()));
 
         if (isStaticImportedCall || isStaticLocalCall) {
             return emitInvokeStatic(node, methodName, ollirRetType, args);
@@ -357,11 +357,11 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
             var symbolTable = (JmmSymbolTable) table;
             final int argCount = args.size();
             var importedTableOpt = symbolTable.getImportedSymbolTable(classType.name())
-                .or(() -> symbolTable.getImportedSymbolTable(classType.fullyQualifiedName()));
+                    .or(() -> symbolTable.getImportedSymbolTable(classType.fullyQualifiedName()));
 
             if (importedTableOpt.isPresent()) {
                 var matchingMethod = importedTableOpt.get().getMethods(methodName).stream()
-                .filter(method -> method.parameters().size() == argCount)
+                        .filter(method -> method.parameters().size() == argCount)
                         .findFirst();
 
                 if (matchingMethod.isPresent()) {
@@ -482,39 +482,39 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
     private OllirExprResult visitNewArrayExpr(JmmNode node, Void unused) {
         StringBuilder computation = new StringBuilder();
         var arrayTemp = ollirTypes.nextTemp();
-        var type = ollirTypes.toOllirType(node.getChild(0));
+
+        // Use the inferred expression type for the full array type (e.g. int[][] for new int[4][2])
+        String fullArrayType = ollirTypes.toOllirType(TypeUtils.with(table).getExprType(node));
 
         List<OllirExprResult> sizes = new ArrayList<>();
 
         var arrayTypeNodes = node.getChildren(ARRAY_TYPE);
         if (!arrayTypeNodes.isEmpty()) {
             arrayTypeNodes.getFirst().getChildren().stream()
-                .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
-                .forEach(dim -> sizes.add(visit(dim.getChild(0))));
+                    .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                    .forEach(dim -> sizes.add(visit(dim.getChild(0))));
         }
 
         node.getChildren().stream()
-            .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
-            .forEach(dim -> sizes.add(visit(dim.getChild(0))));
+                .filter(c -> SIZED_ARRAY_DIM.check(c) || UNSIZED_ARRAY_DIM.check(c))
+                .forEach(dim -> sizes.add(visit(dim.getChild(0))));
 
         for (var size : sizes) {
             computation.append(size.getComputation());
         }
 
         computation.append(arrayTemp)
-                .append(".array")
-                .append(type)
+                .append(fullArrayType)
                 .append(ASSIGN)
-                .append(".array")
-                .append(type)
+                .append(fullArrayType)
                 .append(SPACE)
                 .append("new(array, ")
-            .append(sizes.stream().map(OllirExprResult::getCode).reduce((a, b) -> a + ", " + b).orElse("") )
-                .append(").array")
-                .append(type)
+                .append(sizes.stream().map(OllirExprResult::getCode).reduce((a, b) -> a + ", " + b).orElse("") )
+                .append(")")
+                .append(fullArrayType)
                 .append(END_STMT);
 
-        var code = arrayTemp + ".array" + type;
+        var code = arrayTemp + fullArrayType;
 
         return new OllirExprResult(code, computation);
     }
@@ -614,7 +614,8 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         StringBuilder computation = new StringBuilder();
         var arrayTemp = ollirTypes.nextTemp();
         var type = ollirTypes.toOllirType((node.getChild(0)));
-        var elements = (node.getChild(1)).getChildren();
+        // EXPR_LIST child is absent for empty array literals like new int[]{}
+        var elements = node.getNumChildren() > 1 ? node.getChild(1).getChildren() : java.util.List.<JmmNode>of();
         var sizeCode = elements.size() + ".i32";
 
         // Create array
@@ -861,17 +862,17 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
                 computation.append(operand.getComputation());
 
                 computation.append(temp)
-                    .append(ASSIGN)
-                    .append(ollirType)
-                    .append(SPACE)
-                    .append("0")
-                    .append(ollirType)
-                    .append(SPACE)
-                    .append("-")
-                    .append(ollirType)
-                    .append(SPACE)
-                    .append(operand.getCode())
-                    .append(END_STMT);
+                        .append(ASSIGN)
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append("0")
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append("-")
+                        .append(ollirType)
+                        .append(SPACE)
+                        .append(operand.getCode())
+                        .append(END_STMT);
 
                 code = temp;
                 break;

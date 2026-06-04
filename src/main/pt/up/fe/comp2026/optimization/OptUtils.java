@@ -60,9 +60,10 @@ public class OptUtils {
 
     public String toOllirType(JmmType type) {
 
-        // Array types: .array.<base-type>
+        // Array types: .array.<base-type> (repeat for each dimension)
         if (type.isArray()) {
-            return ".array" + toOllirType(type.asArray().itemType());
+            var arrayType = type.asArray();
+            return ".array".repeat(arrayType.dimension()) + toOllirType(arrayType.itemType());
         }
 
         // Primitive types

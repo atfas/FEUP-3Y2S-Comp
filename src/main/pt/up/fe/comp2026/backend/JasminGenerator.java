@@ -70,7 +70,7 @@ public class JasminGenerator {
         generators.put(BinaryOpInstruction.class, this::generateBinaryOp);
         generators.put(UnaryOpInstruction.class, this::generateUnaryOp);
         generators.put(ReturnInstruction.class, this::generateReturn);
-        
+
         // Method Calls
         generators.put(InvokeVirtualInstruction.class, this::generateInvokeVirtual);
         generators.put(InvokeStaticInstruction.class, this::generateInvokeStatic);
@@ -311,7 +311,19 @@ public class JasminGenerator {
 
         // This way, build is idempotent
         if (code == null) {
-            code = apply(ollirResult.getOllirClass());
+            // Ensure var tables are initialised. When compiling from JMM, transformOllir
+            // may be skipped (e.g. getJasminFromJmm), leaving all virtualReg values at 0.
+            // Only rebuild when at least one non-constructor method still has an empty table,
+            // so register-allocation results (from transformOllir) are preserved.
+            var classUnit = ollirResult.getOllirClass();
+            boolean needsBuild = classUnit.getMethods().stream()
+                    .filter(m -> !m.isConstructMethod())
+                    .anyMatch(m -> m.getVarTable().isEmpty());
+            if (needsBuild) {
+                classUnit.buildVarTables();
+            }
+
+            code = apply(classUnit);
         }
 
         return code;
@@ -426,7 +438,6 @@ public class JasminGenerator {
         code.append(TAB).append(bodyCode);
 
         code.append(".end method\n");
-        //System.out.println("METHOD:\n" + code);
         // unset method
         currentMethod = null;
         //System.out.println("ENDING METHOD " + method.getMethodName());
@@ -672,20 +683,29 @@ public class JasminGenerator {
         var condition = cond.getCondition();
 
         if (condition instanceof BinaryOpInstruction binaryOp) {
+            var opType = binaryOp.getOperation().getOpType();
 
-            code.append(apply(binaryOp));
+            // For direct comparison ops, load both operands and branch with if_icmpXX
+            String directBranch = switch (opType) {
+                case LTH -> "if_icmplt";
+                case GTH -> "if_icmpgt";
+                case LTE -> "if_icmple";
+                case GTE -> "if_icmpge";
+                case EQ  -> "if_icmpeq";
+                case NEQ -> "if_icmpne";
+                default  -> null;
+            };
 
-            switch (binaryOp.getOperation().getOpType()) {
-                case LTH -> code.append("iflt ");
-                case GTH -> code.append("ifgt ");
-                case LTE -> code.append("ifle ");
-                case GTE -> code.append("ifge ");
-                case EQ  -> code.append("ifeq ");
-                case NEQ -> code.append("ifne ");
-                case LOGICAL_AND -> code.append("ifne ");
-                case LOGICAL_OR -> code.append("ifne ");
-                default ->
-                        throw new NotImplementedException(binaryOp.getOperation().getOpType());
+            if (directBranch != null) {
+                code.append(apply(binaryOp.getLeftOperand()));
+                code.append(apply(binaryOp.getRightOperand()));
+                code.append(directBranch).append(" ").append(cond.getLabel()).append(NL);
+                updateStack(-2);
+            } else {
+                // LOGICAL_AND, LOGICAL_OR: generate full boolean result then branch if non-zero
+                code.append(apply(binaryOp));
+                code.append("ifne ").append(cond.getLabel()).append(NL);
+                updateStack(-1);
             }
 
         } else if (condition instanceof UnaryOpInstruction unaryOp) {
@@ -697,14 +717,14 @@ public class JasminGenerator {
                 default ->
                         throw new NotImplementedException(unaryOp.getOperation().getOpType());
             }
+            code.append(cond.getLabel()).append(NL);
+            updateStack(-1);
 
         } else {
             throw new RuntimeException(
                     "Unsupported condition instruction: " + condition.getClass()
             );
         }
-
-        code.append(cond.getLabel()).append(NL);
 
         return code.toString();
     }

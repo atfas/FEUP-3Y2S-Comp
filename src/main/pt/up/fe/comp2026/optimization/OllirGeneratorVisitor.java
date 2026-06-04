@@ -400,7 +400,30 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
         if (node.getChildren().size() > 1) {
 
             JmmType currentType = types.getVarType(varName, currentMethod);
-            String currentBase = ollirTypes.sanitizeId(varName) + ollirTypes.toOllirType(currentType);
+            String currentOllirType = ollirTypes.toOllirType(currentType);
+
+            // If the array variable is a field, load it into a temp first
+            boolean isLocalVar = currentMethod.getLocalVariable(varName).isPresent();
+            boolean isParamVar = currentMethod.getParameter(varName).isPresent();
+            String currentBase;
+            if (!isLocalVar && !isParamVar) {
+                String temp = ollirTypes.nextTemp() + currentOllirType;
+                code.append(temp)
+                        .append(ASSIGN)
+                        .append(currentOllirType)
+                        .append(SPACE)
+                        .append("getfield(this.")
+                        .append(table.getClassName())
+                        .append(", ")
+                        .append(varName)
+                        .append(currentOllirType)
+                        .append(")")
+                        .append(currentOllirType)
+                        .append(END_STMT);
+                currentBase = temp;
+            } else {
+                currentBase = ollirTypes.sanitizeId(varName) + currentOllirType;
+            }
 
             int indexCount = node.getChildren().size() - 1;
 
@@ -411,9 +434,9 @@ public class OllirGeneratorVisitor extends AJmmVisitor<Void, String> {
                 JmmType nextType = currentType.asArray().dimension() == 1
                         ? currentType.asArray().itemType()
                         : JmmArrayType.of(
-                                currentType.asArray().itemType(),
-                                currentType.asArray().dimension() - 1
-                        );
+                        currentType.asArray().itemType(),
+                        currentType.asArray().dimension() - 1
+                );
 
                 String nextOllirType = ollirTypes.toOllirType(nextType);
                 String temp = ollirTypes.nextTemp() + nextOllirType;

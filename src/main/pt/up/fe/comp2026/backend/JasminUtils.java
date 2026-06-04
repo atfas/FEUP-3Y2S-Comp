@@ -101,6 +101,7 @@ public class JasminUtils {
         var prefix = getTypePrefix(reg.getVarType());
         var value = reg.getVirtualReg();
 
+        if (value <= 3) return prefix + "load_" + value;
         return prefix + "load " + value;
     }
 
@@ -108,6 +109,7 @@ public class JasminUtils {
         var prefix = getTypePrefix(reg.getVarType());
         var value = reg.getVirtualReg();
 
+        if (value <= 3) return prefix + "store_" + value;
         return prefix + "store " + value;
     }
 

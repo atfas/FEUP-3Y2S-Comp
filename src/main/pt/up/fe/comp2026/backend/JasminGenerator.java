@@ -707,10 +707,47 @@ public class JasminGenerator {
             };
 
             if (directBranch != null) {
-                code.append(apply(binaryOp.getLeftOperand()));
-                code.append(apply(binaryOp.getRightOperand()));
-                code.append(directBranch).append(" ").append(cond.getLabel()).append(NL);
-                updateStack(-2);
+                var right = binaryOp.getRightOperand();
+                var left  = binaryOp.getLeftOperand();
+                boolean rightIsZero = right instanceof LiteralElement lit
+                        && lit.getLiteral().equals("0");
+                boolean leftIsZero  = left instanceof LiteralElement lit
+                        && lit.getLiteral().equals("0");
+
+                if (rightIsZero) {
+                    // compare left against zero
+                    String zeroBranch = switch (opType) {
+                        case LTH -> "iflt";
+                        case GTH -> "ifgt";
+                        case LTE -> "ifle";
+                        case GTE -> "ifge";
+                        case EQ  -> "ifeq";
+                        case NEQ -> "ifne";
+                        default  -> directBranch;
+                    };
+                    code.append(apply(left));
+                    code.append(zeroBranch).append(" ").append(cond.getLabel()).append(NL);
+                    updateStack(-1);
+                } else if (leftIsZero) {
+                    // flip operands and reverse the comparison
+                    String zeroBranch = switch (opType) {
+                        case LTH -> "ifgt";  // 0 < x  ↔  x > 0
+                        case GTH -> "iflt";  // 0 > x  ↔  x < 0
+                        case LTE -> "ifge";  // 0 <= x ↔  x >= 0
+                        case GTE -> "ifle";  // 0 >= x ↔  x <= 0
+                        case EQ  -> "ifeq";
+                        case NEQ -> "ifne";
+                        default  -> directBranch;
+                    };
+                    code.append(apply(right));
+                    code.append(zeroBranch).append(" ").append(cond.getLabel()).append(NL);
+                    updateStack(-1);
+                } else {
+                    code.append(apply(left));
+                    code.append(apply(right));
+                    code.append(directBranch).append(" ").append(cond.getLabel()).append(NL);
+                    updateStack(-2);
+                }
             } else {
                 // LOGICAL_AND, LOGICAL_OR: generate full boolean result then branch if non-zero
                 code.append(apply(binaryOp));

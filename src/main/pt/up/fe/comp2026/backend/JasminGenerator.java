@@ -471,11 +471,47 @@ public class JasminGenerator {
             }
 
             // Regular variable store
-            code.append(apply(assign.getRhs()));
-
             var operand = (Operand) lhs;
             var reg = currentMethod.getVarTable().get(operand.getName());
 
+            // iinc optimisation: i = i + k  or  i = i - k  (k fits in a byte)
+            if (assign.getRhs() instanceof BinaryOpInstruction binOp) {
+                var opType = binOp.getOperation().getOpType();
+                if (opType == OperationType.ADD || opType == OperationType.SUB) {
+                    var left  = binOp.getLeftOperand();
+                    var right = binOp.getRightOperand();
+
+                    // Identify which side is the same variable and which is a literal
+                    LiteralElement literal = null;
+                    boolean varOnLeft = false;
+
+                    if (left instanceof Operand lo && lo.getName().equals(operand.getName())
+                            && right instanceof LiteralElement rl) {
+                        literal = rl;
+                        varOnLeft = true;
+                    } else if (opType == OperationType.ADD
+                            && right instanceof Operand ro && ro.getName().equals(operand.getName())
+                            && left instanceof LiteralElement ll) {
+                        // addition is commutative
+                        literal = ll;
+                        varOnLeft = false;
+                    }
+
+                    if (literal != null) {
+                        try {
+                            int k = Integer.parseInt(literal.getLiteral());
+                            if (opType == OperationType.SUB) k = -k;
+                            if (k >= -128 && k <= 127) {
+                                code.append("iinc ").append(reg.getVirtualReg())
+                                        .append(" ").append(k).append(NL);
+                                return code.toString(); // no stack change
+                            }
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+
+            code.append(apply(assign.getRhs()));
             code.append(types.getStore(reg)).append(NL);
             updateStack(-1);
 

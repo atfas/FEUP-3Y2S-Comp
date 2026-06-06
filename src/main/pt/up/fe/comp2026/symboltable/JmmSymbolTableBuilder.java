@@ -118,10 +118,10 @@ public class JmmSymbolTableBuilder {
             String name = param.get(JmmAttributes.PARAM.NAME);
 
             if (type.equals(JmmPrimitiveType.VOID)) {
-                reports.add(newError(param, "Parameter '" + name + "' cannot have type void"));
+                reports.add(newError(param, "Parameter '" + name + "' has illegal type void"));
             }
             if (!names.add(name)) {
-                reports.add(newError(param, "Duplicate parameter name: " + name));
+                reports.add(newError(param, "Parameter '" + name + "' is declared more than once"));
             }
             params.add(new Symbol(type, name));
         }
@@ -139,10 +139,10 @@ public class JmmSymbolTableBuilder {
             String name = local.get(JmmAttributes.VAR_DECL.NAME);
 
             if (type.equals(JmmPrimitiveType.VOID)) {
-                reports.add(newError(local, "Local variable '" + name + "' cannot have type void"));
+                reports.add(newError(local, "Local variable '" + name + "' has illegal type void"));
             }
             if (!names.add(name)) {
-                reports.add(newError(local, "Duplicate local variable: " + name));
+                reports.add(newError(local, "Local variable '" + name + "' is declared more than once"));
             }
             locals.add(new Symbol(type, name));
         }
@@ -163,7 +163,7 @@ public class JmmSymbolTableBuilder {
             var importPathList = importDecl.getObjectAsList("path", String.class);
 
             if (importPathList.size() < 2) {
-                reports.add(newError(importDecl, "Import must be fully qualified (e.g. 'import java.util.List')"));
+                reports.add(newError(importDecl, "Import path must contain at least one '.' (e.g. 'import java.util.List')"));
                 continue;
             }
 
@@ -206,10 +206,10 @@ public class JmmSymbolTableBuilder {
             var name = child.get(JmmAttributes.VAR_DECL.NAME);
 
             if (type.equals(JmmPrimitiveType.VOID)) {
-                reports.add(newError(child, "Field '" + name + "' cannot have type void"));
+                reports.add(newError(child, "Field '" + name + "' has illegal type void"));
             }
             if (!names.add(name)) {
-                reports.add(newError(child, "Duplicate field name: " + name));
+                reports.add(newError(child, "Field '" + name + "' is already declared in this class"));
             }
             fields.add(new Symbol(type, name));
         }
@@ -230,7 +230,7 @@ public class JmmSymbolTableBuilder {
                             .collect(java.util.stream.Collectors.joining(","))
                     + ")";
             if (!signatures.add(sig)) {
-                reports.add(newError(methodNode, "Duplicate method signature: " + sig));
+                reports.add(newError(methodNode, "Method with signature '" + sig + "' is declared more than once"));
             }
             methods.add(method);
         }

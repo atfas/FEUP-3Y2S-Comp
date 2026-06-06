@@ -16,8 +16,9 @@ import pt.up.fe.comp2026.jmm.ast.JmmAttributes;
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.METHOD_DECL;
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.RETURN_STMT;
 
-public class ReturnStatementVisitor extends AnalysisVisitorWithTable{
-    private MethodSymbol currentMethod;
+public class ReturnStatementVisitor extends AnalysisVisitorWithTable {
+
+    private MethodSymbol activeMethod;
 
     public ReturnStatementVisitor(SymbolTable table) {
         super(table);
@@ -25,58 +26,56 @@ public class ReturnStatementVisitor extends AnalysisVisitorWithTable{
 
     @Override
     protected void buildVisitor() {
-        addVisit(METHOD_DECL, this::visitMethodDecl);
-        addVisit(RETURN_STMT, this::visitReturn);
+        addVisit(METHOD_DECL, this::trackActiveMethod);
+        addVisit(RETURN_STMT, this::checkReturn);
     }
 
-    private Void visitMethodDecl(JmmNode method, SymbolTable table) {
-        var signature = TypeUtils.with(table).getMethodDeclSignature(method);
-        currentMethod = table.getMethod(signature).orElseThrow();
+    private Void trackActiveMethod(JmmNode method, SymbolTable table) {
+        var sig = TypeUtils.with(table).getMethodDeclSignature(method);
+        activeMethod = table.getMethod(sig).orElseThrow();
 
-        // If return type not null, return must exist
-        if (!currentMethod.returnType().equals(JmmPrimitiveType.VOID)
-                && method.getDescendants(RETURN_STMT).isEmpty())
+        // Non-void methods must have at least one return statement
+        if (!activeMethod.returnType().equals(JmmPrimitiveType.VOID)
+                && method.getDescendants(RETURN_STMT).isEmpty()) {
             addReport(Report.newError(
                     Stage.SEMANTIC,
                     NodeUtils.getLine(method),
                     NodeUtils.getColumn(method),
-                    "Method '" + method.get("name") + "' must return a value",
+                    "Method '" + method.get("name") + "' has a non-void return type but never returns",
                     null
             ));
+        }
         return null;
     }
 
+    private Void checkReturn(JmmNode returnNode, SymbolTable table) {
+        boolean returnsVoid = activeMethod.returnType().equals(JmmPrimitiveType.VOID);
 
-    private Void visitReturn(JmmNode returnNode, SymbolTable table) {
-
-        boolean isVoidMethod =
-                currentMethod.returnType().equals(JmmPrimitiveType.VOID);
-
-        // Case 1: return;
+        // Bare 'return;' — only valid in void methods
         if (returnNode.getNumChildren() == 0) {
-            if (!isVoidMethod) {
+            if (!returnsVoid) {
                 addReport(newError(returnNode,
-                        "Non-void method must return a value"));
+                        "Non-void method '" + activeMethod.name() + "' must return a value"));
             }
             return null;
         }
 
-        // Case 2: return <expr>;
-        var expr = returnNode.getChild(0);
-        var exprType = TypeUtils.with(table).getExprType(expr);
-        var returnType = currentMethod.returnType();
+        // 'return <expr>;'
+        var returnedExpr  = returnNode.getChild(0);
+        var returnedType  = TypeUtils.with(table).getExprType(returnedExpr);
+        var declaredType  = activeMethod.returnType();
 
-        if (isVoidMethod) {
+        if (returnsVoid) {
             addReport(newError(returnNode,
-                    "Void method cannot return a value"));
+                    "Void method '" + activeMethod.name() + "' cannot return a value"));
             return null;
         }
 
-        if (!exprType.equals(returnType) && !TypeUtils.with(table).isAssignable(exprType, returnType)) {
+        if (!returnedType.equals(declaredType)
+                && !TypeUtils.with(table).isAssignable(returnedType, declaredType)) {
             addReport(newError(returnNode,
-                    String.format(
-                            "Return type mismatch: expected '%s' but got '%s'",
-                            returnType, exprType)));
+                    "Return type mismatch in '" + activeMethod.name()
+                            + "': declared '" + declaredType + "', got '" + returnedType + "'"));
         }
 
         return null;

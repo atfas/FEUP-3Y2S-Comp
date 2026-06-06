@@ -15,37 +15,35 @@ public class OverrideCheckVisitor extends AnalysisVisitorWithTable {
 
     @Override
     protected void buildVisitor() {
-        addVisit(CLASS_DECL, this::visitClassDecl);
+        addVisit(CLASS_DECL, this::checkOverrides);
     }
 
-    private Void visitClassDecl(JmmNode classDecl, SymbolTable table) {
+    private Void checkOverrides(JmmNode classDecl, SymbolTable table) {
         String superName = table.getSuperFullyQualifiedName();
-        if (superName == null || superName.isEmpty() || superName.equals("Object")
-                || superName.equals("java.lang.Object")) {
+        if (superName == null || superName.isEmpty()
+                || superName.equals("Object") || superName.equals("java.lang.Object")) {
             return null;
         }
 
         var superTableOpt = this.table.getImportedSymbolTable(superName);
-        if (superTableOpt.isEmpty()) return null; // can't verify external superclass
+        if (superTableOpt.isEmpty()) return null;
 
         var superTable = superTableOpt.get();
 
         for (var method : table.getMethods()) {
-            for (var superMethod : superTable.getMethods(method.name())) {
-                if (!paramTypesMatch(method, superMethod)) continue;
+            for (var parentMethod : superTable.getMethods(method.name())) {
+                if (!signaturesMatch(method, parentMethod)) continue;
 
-                if (!method.returnType().equals(superMethod.returnType())) {
-                    // Find the method node for a precise error location
+                if (!method.returnType().equals(parentMethod.returnType())) {
                     var methodNode = classDecl.getChildren(METHOD_DECL).stream()
                             .filter(n -> n.get("name").equals(method.name()))
                             .findFirst()
                             .orElse(classDecl);
 
                     addReport(newError(methodNode,
-                            "Method '" + method.name() + "' overrides '"
-                                    + superName + "." + method.name()
-                                    + "' but declares incompatible return type: expected '"
-                                    + superMethod.returnType() + "' but got '"
+                            "'" + method.name() + "' overrides '" + superName + "." + method.name()
+                                    + "' with a different return type: parent declares '"
+                                    + parentMethod.returnType() + "', child declares '"
                                     + method.returnType() + "'"));
                 }
             }
@@ -53,7 +51,7 @@ public class OverrideCheckVisitor extends AnalysisVisitorWithTable {
         return null;
     }
 
-    private boolean paramTypesMatch(MethodSymbol a, MethodSymbol b) {
+    private boolean signaturesMatch(MethodSymbol a, MethodSymbol b) {
         if (a.parameters().size() != b.parameters().size()) return false;
         for (int i = 0; i < a.parameters().size(); i++) {
             if (!a.parameters().get(i).type().equals(b.parameters().get(i).type())) return false;

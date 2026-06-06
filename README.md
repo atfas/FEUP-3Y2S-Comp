@@ -1,30 +1,58 @@
-# Compiler Project
+# Compiler Project — Group 11a
 
-For the last delivery (CP3), complete the following sections.
+## Group Members
+
+| Name | Student Number |
+|------|---------------|
+| Afonso Cruz | 202006020 |
+| Afonso Saraiva | 2020304461 |
+| Daniel Pinto | 202304957 |
+| Tomás Barros | 202303664 |
 
 ## Participation
 
-The sum of the participations should be 100%, for a group of four elements with balanced participation, this corresponds to 25% participation each.
+Afonso Cruz — 25%
+Afonso Saraiva — 25%
+Daniel Pinto — 25%
+Tomás Barros — 25%
 
-[Student 1] - [percentage]% 
-[Student 2] - [percentage]% 
-[Student 3] - [percentage]% 
-[Student 4] - [percentage]% 
+## Self-Evaluation
+
+| | Grade (0–20) |
+|-|-------------|
+| **Overall project** | 18 |
+| Afonso Cruz | 18 |
+| Afonso Saraiva | 18 |
+| Daniel Pinto | 18 |
+| Tomás Barros | 18 |
+
+## Extensions Developed
+
+| Extension | Status | Description |
+|-----------|--------|-------------|
+| **Arbitrary field position** | Implemented |  class fields generated at the start of the Jasmin class regardless of declaration order |
+| **Method visibility modifiers** | Implemented |  `public`, `private`, `protected` correctly emitted in Jasmin |
+| **Field initializers** | Implemented |  field initialization code emitted inside the `<init>` constructor |
+| **if without else** | Implemented |  correct Jasmin control flow generated |
+| **for loop** | Implemented |  Jasmin code generated for `for` statements |
+| **do-while loop** | Implemented |  Jasmin code generated for `do-while` statements |
+| **Additional arithmetic operators** (`%`) | Implemented |  `rem` instruction emitted |
+| **Additional logical operators** (`&&`, `\|\|`) | Implemented |  short-circuit evaluation via OLLIR branches |
+| **Local static method calls** | Implemented |  `invokestatic` emitted for same-class static calls |
+| **new with arguments** | Implemented |  arguments loaded before `invokespecial` |
+| **Implicit this** | Implemented |  instance method calls on current object resolve correctly |
+| **Array initializer** | Implemented |  Jasmin code generated for array literal initializers |
+| **Multidimensional arrays** | Implemented |  `multianewarray`, `aaload`, `aastore` emitted correctly |
 
 ## Declaration of AI Tools Used
 
-Please choose one of the two options  about AI tools use. In case tools where used, enumerate which ones, and the specific use.
-
-Finally, check the box regarding responsibility for the work.
-
 AI tools/services used in this work:
 
-[] No AI tools were used.
-[] The following tools were used:
- - [Name]: [specific use]
- - [Name]: [specific use]
+[x] The following tools were used:
 
-[] All content has been reviewed, understood, validated, and we assume full responsibility for the work in this repository.
+ - **Claude (Anthropic)**: Throughout the project, we used Claude to help us better understand relevant concepts and technologies. It was particularly useful when we had questions about specific implementation details or needed clearer explanations of topics. We also used it to assist with documenting the code through explanatory comments and to review parts of our implementation, providing suggestions and alternative approaches for features that were more challenging to develop.
+
+[x] All content has been reviewed, understood, validated, and we assume full responsibility for the work in this repository.
 
 
 # Repository Structure

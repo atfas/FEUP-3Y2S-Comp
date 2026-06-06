@@ -9,7 +9,7 @@ import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
 
 public class StaticContextVisitor extends AnalysisVisitorWithTable {
 
-    private MethodSymbol currentMethod;
+    private MethodSymbol activeMethod;
 
     public StaticContextVisitor(SymbolTable table) {
         super(table);
@@ -17,71 +17,72 @@ public class StaticContextVisitor extends AnalysisVisitorWithTable {
 
     @Override
     protected void buildVisitor() {
-        addVisit(METHOD_DECL, this::visitMethodDecl);
-        addVisit(THIS_LITERAL, this::visitThisLiteral);
-        addVisit(VAR_REF_EXPR, this::visitVarRefExpr);
-        addVisit(OBJECT_CALL_EXPR, this::visitObjectCallExpr);
+        addVisit(METHOD_DECL,    this::trackCurrentMethod);
+        addVisit(THIS_LITERAL,   this::rejectThisInStatic);
+        addVisit(VAR_REF_EXPR,   this::rejectInstanceFieldInStatic);
+        addVisit(OBJECT_CALL_EXPR, this::rejectInstanceCallOnClass);
     }
 
-    private Void visitMethodDecl(JmmNode method, SymbolTable table) {
-        var signature = TypeUtils.with(table).getMethodDeclSignature(method);
-        currentMethod = table.getMethod(signature).orElseThrow();
+    private Void trackCurrentMethod(JmmNode method, SymbolTable table) {
+        var sig = TypeUtils.with(table).getMethodDeclSignature(method);
+        activeMethod = table.getMethod(sig).orElseThrow();
         return null;
     }
 
-    // #5 and #6: reject 'this' (and therefore 'this.method()') inside static methods
-    private Void visitThisLiteral(JmmNode thisNode, SymbolTable table) {
-        if (currentMethod != null && currentMethod.isStatic()) {
-            addReport(newError(thisNode, "Cannot use 'this' in static method '" + currentMethod.name() + "'"));
+    // 'this' has no meaning inside a static method
+    private Void rejectThisInStatic(JmmNode thisNode, SymbolTable table) {
+        if (activeMethod != null && activeMethod.isStatic()) {
+            addReport(newError(thisNode,
+                    "'this' is not defined inside static method '" + activeMethod.name() + "'"));
         }
         return null;
     }
 
-    // #7: reject instance field access inside static methods
-    private Void visitVarRefExpr(JmmNode varRef, SymbolTable table) {
-        if (currentMethod == null || !currentMethod.isStatic()) return null;
+    // Instance fields belong to objects, not to the class itself
+    private Void rejectInstanceFieldInStatic(JmmNode varRef, SymbolTable table) {
+        if (activeMethod == null || !activeMethod.isStatic()) return null;
 
-        var name = varRef.get("name");
+        var varName = varRef.get("name");
 
-        // Only reject if the name resolves to a field (not a local, param, or class reference)
-        boolean isLocal = currentMethod.getLocalVariable(name).isPresent();
-        boolean isParam = currentMethod.getParameter(name).isPresent();
-        boolean isField = table.getField(name).isPresent();
+        boolean declaredLocally = activeMethod.getLocalVariable(varName).isPresent();
+        boolean declaredAsParam = activeMethod.getParameter(varName).isPresent();
+        boolean isInstanceField = table.getField(varName).isPresent();
 
-        if (!isLocal && !isParam && isField) {
+        if (!declaredLocally && !declaredAsParam && isInstanceField) {
             addReport(newError(varRef,
-                    "Cannot access instance field '" + name + "' from static method '" + currentMethod.name() + "'"));
+                    "Field '" + varName + "' belongs to an instance and cannot be accessed from static context '"
+                            + activeMethod.name() + "'"));
         }
         return null;
     }
 
-    // #4: reject calling a non-static method via a class name
-    private Void visitObjectCallExpr(JmmNode callNode, SymbolTable table) {
-        var postfixExpr = callNode.getParent();
-        if (postfixExpr == null || postfixExpr.getNumChildren() == 0) return null;
+    // Calling a non-static method using the class name as receiver is illegal
+    private Void rejectInstanceCallOnClass(JmmNode callNode, SymbolTable table) {
+        var postfix = callNode.getParent();
+        if (postfix == null || postfix.getNumChildren() == 0) return null;
 
-        var base = postfixExpr.getChild(0);
-        if (!VAR_REF_EXPR.check(base)) return null;
+        var receiver = postfix.getChild(0);
+        if (!VAR_REF_EXPR.check(receiver)) return null;
 
-        var baseName = base.get("name");
-        String methodName = callNode.get("name");
+        var receiverName = receiver.get("name");
+        var calledMethod  = callNode.get("name");
 
-        // Determine if base is the current class used as a static reference
-        boolean isCurrentClass = baseName.equals(table.getClassName());
+        boolean receiverIsClassName = receiverName.equals(table.getClassName());
 
-        // It must NOT be an instance variable for it to be a class-level reference
-        boolean isInstanceVar = currentMethod != null && (
-                currentMethod.getParameter(baseName).isPresent() ||
-                currentMethod.getLocalVariable(baseName).isPresent() ||
-                table.getField(baseName).isPresent());
+        boolean receiverIsVariable = activeMethod != null && (
+                activeMethod.getParameter(receiverName).isPresent()
+                || activeMethod.getLocalVariable(receiverName).isPresent()
+                || table.getField(receiverName).isPresent());
 
-        if (!isCurrentClass || isInstanceVar) return null;
+        if (!receiverIsClassName || receiverIsVariable) return null;
 
-        // base is the current class name used as a static receiver — reject non-static methods
-        boolean anyNonStatic = table.getMethods(methodName).stream().anyMatch(m -> !m.isStatic());
-        if (anyNonStatic) {
+        boolean hasNonStaticOverload = table.getMethods(calledMethod).stream()
+                .anyMatch(m -> !m.isStatic());
+
+        if (hasNonStaticOverload) {
             addReport(newError(callNode,
-                    "Cannot call instance method '" + methodName + "' on class '" + baseName + "'"));
+                    "'" + calledMethod + "' is an instance method and cannot be called on class '"
+                            + receiverName + "'"));
         }
 
         return null;

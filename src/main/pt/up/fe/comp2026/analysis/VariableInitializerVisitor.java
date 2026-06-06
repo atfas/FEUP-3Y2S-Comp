@@ -16,8 +16,9 @@ import java.util.Optional;
 
 import static pt.up.fe.comp2026.jmm.ast.JmmKind.*;
 
-public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
-    private MethodSymbol currentMethod;
+public class VariableInitializerVisitor extends AnalysisVisitorWithTable {
+
+    private MethodSymbol activeMethod;
 
     public VariableInitializerVisitor(SymbolTable table) {
         super(table);
@@ -25,46 +26,44 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
 
     @Override
     protected void buildVisitor() {
-        addVisit(METHOD_DECL, this::visitMethodDecl);
-        addVisit(VAR_DECL, this::wrongLiteralInitializer);
-        addVisit(ASSIGN_STMT, this::varAssign);
+        addVisit(METHOD_DECL, this::trackMethod);
+        addVisit(VAR_DECL,    this::checkDeclInit);
+        addVisit(ASSIGN_STMT, this::checkAssignTypes);
     }
 
-    private Void visitMethodDecl(JmmNode method, SymbolTable table) {
-        var signature = TypeUtils.with(table).getMethodDeclSignature(method);
-        currentMethod = table.getMethod(signature).orElseThrow();
+    private Void trackMethod(JmmNode method, SymbolTable table) {
+        var sig = TypeUtils.with(table).getMethodDeclSignature(method);
+        activeMethod = table.getMethod(sig).orElseThrow();
 
-        // If return type not null, return must exist
-        if (!currentMethod.returnType().equals(JmmPrimitiveType.VOID)
-                && method.getDescendants(RETURN_STMT).isEmpty())
+        if (!activeMethod.returnType().equals(JmmPrimitiveType.VOID)
+                && method.getDescendants(RETURN_STMT).isEmpty()) {
             addReport(Report.newError(
                     Stage.SEMANTIC,
                     NodeUtils.getLine(method),
                     NodeUtils.getColumn(method),
-                    "Method '" + method.get("name") + "' must return a value",
+                    "Method '" + method.get("name") + "' has a non-void return type but never returns",
                     null
-            ));
-        return null;
-    }
-
-    private Void wrongLiteralInitializer(JmmNode declaration, SymbolTable table){
-        if (declaration.getChildren().toArray().length < 2) return null;
-
-        var varType = TypeUtils.with(table).convertType(declaration.getChild(0));
-        var assignType = TypeUtils.with(table).getExprType(declaration.getChild(1));
-
-        if (!isValidAssign(varType, assignType)){
-            addReport(newError(
-                    declaration,
-                    "Assign type must be the same as the variable type"
             ));
         }
         return null;
     }
 
-    private boolean isImportedMethodCall(JmmNode expr, SymbolTable table) {
-        if (!POSTFIX_EXPR.check(expr)) return false;
-        if (expr.getNumChildren() < 2) return false;
+    private Void checkDeclInit(JmmNode decl, SymbolTable table) {
+        if (decl.getChildren().toArray().length < 2) return null;
+
+        var declaredType = TypeUtils.with(table).convertType(decl.getChild(0));
+        var initType     = TypeUtils.with(table).getExprType(decl.getChild(1));
+
+        if (!typesAreCompatible(declaredType, initType)) {
+            addReport(newError(decl,
+                    "Initializer type '" + initType + "' does not match declared type '" + declaredType + "'"));
+        }
+        return null;
+    }
+
+    // Calls on imported classes are always trusted — we can't inspect their signatures
+    private boolean rhsIsImportedCall(JmmNode expr, SymbolTable table) {
+        if (!POSTFIX_EXPR.check(expr) || expr.getNumChildren() < 2) return false;
         if (!OBJECT_CALL_EXPR.check(expr.getChild(1))) return false;
 
         JmmNode base = expr.getChild(0);
@@ -75,136 +74,105 @@ public class VariableInitializerVisitor extends AnalysisVisitorWithTable{
                 .anyMatch(imp -> imp.equals(baseName) || imp.endsWith("." + baseName));
     }
 
-    private Void varAssign(JmmNode assign, SymbolTable table){
-        int lastChildIndex = assign.getNumChildren() - 1;
-        JmmNode rhsExpr = assign.getChild(lastChildIndex);
+    private Void checkAssignTypes(JmmNode assign, SymbolTable table) {
+        int lastIdx  = assign.getNumChildren() - 1;
+        JmmNode rhs  = assign.getChild(lastIdx);
 
-        if (isImportedMethodCall(rhsExpr, table)) {
-            return null;
-        }
+        if (rhsIsImportedCall(rhs, table)) return null;
 
-        var varType = TypeUtils.with(table).getVarType(assign.get("var"), currentMethod);
+        var lhsType  = TypeUtils.with(table).getVarType(assign.get("var"), activeMethod);
+        var rhsType  = TypeUtils.with(table).getExprType(rhs);
+        int numIndices = lastIdx;
 
-        int indexCount = lastChildIndex;
-        var assignType = TypeUtils.with(table).getExprType(rhsExpr);
+        if (numIndices > 0) {
+            for (int i = 0; i < numIndices; i++) {
+                JmmNode idxNode  = assign.getChild(i);
+                var idxType = TypeUtils.with(table).getExprType(idxNode);
 
-        if (indexCount > 0) {
-            for (int i = 0; i < indexCount; i++) {
-                JmmNode indexExpr = assign.getChild(i);
-                var indexType = TypeUtils.with(table).getExprType(indexExpr);
-
-                if (!indexType.equals(TypeUtils.intType())) {
-                    addReport(newError(
-                            indexExpr,
-                            "Array index must be of type int, got: " + indexType
-                    ));
+                if (!idxType.equals(TypeUtils.intType())) {
+                    addReport(newError(idxNode,
+                            "Array subscript must be int, got '" + idxType + "'"));
                 }
 
-                if (varType instanceof JmmArrayType arrayType) {
-                    int remaining = arrayType.dimension() - 1;
-                    varType = remaining <= 0
-                            ? arrayType.itemType()
-                            : JmmArrayType.of(arrayType.itemType(), remaining);
+                if (lhsType instanceof JmmArrayType at) {
+                    int left = at.dimension() - 1;
+                    lhsType = left <= 0 ? at.itemType() : JmmArrayType.of(at.itemType(), left);
                 } else {
-                    addReport(newError(
-                            assign,
-                            "Array access must be done on an array"
-                    ));
+                    addReport(newError(assign, "Subscript applied to non-array type"));
                     return null;
                 }
             }
         }
 
-        if (!isValidAssign(varType, assignType)){
-            addReport(newError(
-                    assign,
-                    "Assign type: " + assignType + " must be the same as the variable type: " + varType
-            ));
+        if (!typesAreCompatible(lhsType, rhsType)) {
+            addReport(newError(assign,
+                    "Type mismatch: '" + rhsType + "' cannot be assigned to '" + lhsType + "'"));
         }
         return null;
     }
 
-    private Boolean isValidAssign(JmmType varType, JmmType givenType){
-        // If either type is explicitly imported (not java.lang, not 'this')
-        if (varType instanceof JmmClassType classType && isExplicitlyImported(classType)
-                && !classType.name().equals(table.getClassName())
-                && !classType.name().equals(table.getFullyQualifiedName())) return true;
-        if (givenType instanceof JmmClassType classType && isExplicitlyImported(classType)
-                && !classType.name().equals(table.getClassName())
-                && !classType.name().equals(table.getFullyQualifiedName())) return true;
-        // Primitive types: must match exactly
-        if (varType instanceof JmmPrimitiveType && givenType instanceof JmmPrimitiveType) {
-            return varType.equals(givenType);
-        }
+    private boolean typesAreCompatible(JmmType target, JmmType source) {
+        // Imported types are treated as opaque — skip deep checking
+        if (target instanceof JmmClassType ct && isKnownImport(ct)
+                && !ct.name().equals(table.getClassName())
+                && !ct.name().equals(table.getFullyQualifiedName())) return true;
+        if (source instanceof JmmClassType ct && isKnownImport(ct)
+                && !ct.name().equals(table.getClassName())
+                && !ct.name().equals(table.getFullyQualifiedName())) return true;
 
-        // Array types: must match exactly
-        if (varType instanceof JmmArrayType && givenType instanceof JmmArrayType) {
-            return varType.equals(givenType);
-        }
+        if (target instanceof JmmPrimitiveType && source instanceof JmmPrimitiveType)
+            return target.equals(source);
 
-        // Class types
-        if (varType instanceof JmmClassType varClass && givenType instanceof JmmClassType givenClass) {
-            if (varType.equals(givenType)) {
-                return isJavaLang(varClass) || varClass.name().equals(table.getClassName());
+        if (target instanceof JmmArrayType && source instanceof JmmArrayType)
+            return target.equals(source);
+
+        if (target instanceof JmmClassType tClass && source instanceof JmmClassType sClass) {
+            if (target.equals(source))
+                return isStdLib(tClass) || tClass.name().equals(table.getClassName());
+
+            // Allow assigning 'this' to a compatible supertype
+            boolean sourceIsThis = sClass.name().equals(table.getFullyQualifiedName())
+                    || sClass.name().equals(table.getClassName());
+
+            if (sourceIsThis) {
+                boolean targetIsCurrentClass = tClass.name().equals(table.getClassName())
+                        || tClass.name().equals(table.getFullyQualifiedName());
+                if (targetIsCurrentClass) return true;
+
+                String superFqn = table.getSuperFullyQualifiedName();
+                if (superFqn == null || superFqn.isEmpty()) return false;
+
+                Class<?> tResolved = tryLoadClass(tClass.name());
+                Class<?> sResolved = tryLoadClass(superFqn);
+                return tResolved != null && sResolved != null && tResolved.isAssignableFrom(sResolved);
             }
 
-            // Handle 'this' assigned to a type
-            if (givenClass.name().equals(table.getFullyQualifiedName()) ||
-                    givenClass.name().equals(table.getClassName())) {
-
-                if (varClass.name().equals(table.getClassName()) ||
-                        varClass.name().equals(table.getFullyQualifiedName())) return true;
-
-                String superName = table.getSuperFullyQualifiedName();
-
-                if (superName == null || superName.isEmpty()) return false;
-
-                Class<?> varClazz = resolveClass(varClass.name());
-                Class<?> superClazz = resolveClass(superName);
-                if (varClazz != null && superClazz != null) {
-                    return varClazz.isAssignableFrom(superClazz);
-                }
-                return false;
-            }
-
-            // Different types — check subtype via reflection
-            Class<?> varClazz = resolveClass(varClass.name());
-            Class<?> givenClazz = resolveClass(givenClass.name());
-            if (varClazz != null && givenClazz != null) {
-                return varClazz.isAssignableFrom(givenClazz);
-            }
-
-            return false;
+            Class<?> tResolved = tryLoadClass(tClass.name());
+            Class<?> sResolved = tryLoadClass(sClass.name());
+            return tResolved != null && sResolved != null && tResolved.isAssignableFrom(sResolved);
         }
 
         return false;
     }
 
-    private boolean isExplicitlyImported(JmmClassType classType) {
-        String name = classType.name();
+    private boolean isKnownImport(JmmClassType type) {
+        String name = type.name();
         if (name.equals(table.getClassName())) return true;
         return table.getImports().stream()
                 .anyMatch(imp -> imp.equals(name) || imp.endsWith("." + name));
     }
 
-    private boolean isJavaLang(JmmClassType classType) {
-        try {
-            Class.forName("java.lang." + classType.name());
-            return true;
-        } catch (ClassNotFoundException e) {
-            return false;
-        }
+    private boolean isStdLib(JmmClassType type) {
+        try { Class.forName("java.lang." + type.name()); return true; }
+        catch (ClassNotFoundException e) { return false; }
     }
 
-    private Class<?> resolveClass(String name) {
-        // Try explicit import
+    private Class<?> tryLoadClass(String name) {
         var fqn = table.getImports().stream()
                 .filter(imp -> imp.equals(name) || imp.endsWith("." + name))
                 .findFirst();
         try {
-            if (fqn.isPresent()) return Class.forName(fqn.get());
-            // Try java.lang
-            return Class.forName("java.lang." + name);
+            return fqn.isPresent() ? Class.forName(fqn.get()) : Class.forName("java.lang." + name);
         } catch (ClassNotFoundException e) {
             return null;
         }

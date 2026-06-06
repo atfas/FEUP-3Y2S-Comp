@@ -117,7 +117,10 @@ public class JmmSymbolTableBuilder {
             var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             String name = param.get(JmmAttributes.PARAM.NAME);
 
-            if (!names.add(name)){
+            if (type.equals(JmmPrimitiveType.VOID)) {
+                reports.add(newError(param, "Parameter '" + name + "' cannot have type void"));
+            }
+            if (!names.add(name)) {
                 reports.add(newError(param, "Duplicate parameter name: " + name));
             }
             params.add(new Symbol(type, name));
@@ -135,6 +138,9 @@ public class JmmSymbolTableBuilder {
             var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             String name = local.get(JmmAttributes.VAR_DECL.NAME);
 
+            if (type.equals(JmmPrimitiveType.VOID)) {
+                reports.add(newError(local, "Local variable '" + name + "' cannot have type void"));
+            }
             if (!names.add(name)) {
                 reports.add(newError(local, "Duplicate local variable: " + name));
             }
@@ -155,6 +161,12 @@ public class JmmSymbolTableBuilder {
         for (var importDecl : root.getChildren(IMPORT_DECL)) {
 
             var importPathList = importDecl.getObjectAsList("path", String.class);
+
+            if (importPathList.size() < 2) {
+                reports.add(newError(importDecl, "Import must be fully qualified (e.g. 'import java.util.List')"));
+                continue;
+            }
+
             var path = String.join(".", importPathList);
 
             if (!imports.contains(path)) {
@@ -182,6 +194,7 @@ public class JmmSymbolTableBuilder {
 
     private List<Symbol> buildFields(JmmNode classDecl) {
         List<Symbol> fields = new ArrayList<>();
+        Set<String> names = new HashSet<>();
 
         for (var child : classDecl.getChildren()) {
             if (!VAR_DECL.check(child)) {
@@ -192,6 +205,9 @@ public class JmmSymbolTableBuilder {
             var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             var name = child.get(JmmAttributes.VAR_DECL.NAME);
 
+            if (!names.add(name)) {
+                reports.add(newError(child, "Duplicate field name: " + name));
+            }
             fields.add(new Symbol(type, name));
         }
 
@@ -200,11 +216,23 @@ public class JmmSymbolTableBuilder {
 
 
     private List<MethodSymbol> buildMethods(JmmNode classDecl) {
+        Set<String> signatures = new HashSet<>();
+        List<MethodSymbol> methods = new ArrayList<>();
 
-        return classDecl.getChildren(METHOD_DECL).stream()
-                .map(this::buildMethod)
-                .toList();
+        for (var methodNode : classDecl.getChildren(METHOD_DECL)) {
+            var method = buildMethod(methodNode);
+            String sig = method.name() + "(" +
+                    method.parameters().stream()
+                            .map(p -> p.type().toString())
+                            .collect(java.util.stream.Collectors.joining(","))
+                    + ")";
+            if (!signatures.add(sig)) {
+                reports.add(newError(methodNode, "Duplicate method signature: " + sig));
+            }
+            methods.add(method);
+        }
 
+        return methods;
     }
 
     private MethodSymbol buildMethod(JmmNode method) {

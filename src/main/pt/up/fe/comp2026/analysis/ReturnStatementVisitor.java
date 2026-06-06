@@ -72,7 +72,7 @@ public class ReturnStatementVisitor extends AnalysisVisitorWithTable{
             return null;
         }
 
-        if (!exprType.equals(returnType)) {
+        if (!exprType.equals(returnType) && !TypeUtils.with(table).isAssignable(exprType, returnType)) {
             addReport(newError(returnNode,
                     String.format(
                             "Return type mismatch: expected '%s' but got '%s'",

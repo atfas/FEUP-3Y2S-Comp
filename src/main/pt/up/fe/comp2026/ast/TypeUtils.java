@@ -415,7 +415,7 @@ public class TypeUtils {
         return true;
     }
 
-    private boolean isAssignable(JmmType from, JmmType to) {
+    public boolean isAssignable(JmmType from, JmmType to) {
 
         if (from.equals(to)) return true;
 

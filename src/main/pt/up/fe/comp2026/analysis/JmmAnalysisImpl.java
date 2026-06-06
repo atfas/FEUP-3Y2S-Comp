@@ -28,7 +28,8 @@ public class JmmAnalysisImpl implements JmmAnalysis {
                 new ArrayVisitor(table),
                 new VariableInitializerVisitor(table),
                 new OperatorVisitor(table),
-                new StaticContextVisitor(table)
+                new StaticContextVisitor(table),
+                new OverrideCheckVisitor(table)
         );
     }
 

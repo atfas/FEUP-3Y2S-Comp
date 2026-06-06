@@ -205,6 +205,9 @@ public class JmmSymbolTableBuilder {
             var type = TypeUtils.convertType(typeNode, className, fullyQualifiedName, imports);
             var name = child.get(JmmAttributes.VAR_DECL.NAME);
 
+            if (type.equals(JmmPrimitiveType.VOID)) {
+                reports.add(newError(child, "Field '" + name + "' cannot have type void"));
+            }
             if (!names.add(name)) {
                 reports.add(newError(child, "Duplicate field name: " + name));
             }

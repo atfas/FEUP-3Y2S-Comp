@@ -58,6 +58,8 @@ public class OllirExprGeneratorVisitor extends AJmmVisitor<Void, OllirExprResult
         addVisit(TRUE_LITERAL, this::visitTrueLiteral);
         addVisit(FALSE_LITERAL, this::visitFalseLiteral);
         addVisit(NEW_ARRAY_LITERAL_EXPR, this::visitNewArrayLiteral);
+
+        setDefaultVisit(this::defaultVisitExpr);
     }
 
     private OllirExprResult visitCallExpr(JmmNode node, Void unused) {
